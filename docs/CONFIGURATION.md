@@ -31,6 +31,16 @@ Copy `config.example.yaml` to `config.yaml` and fill in your details. `config.ya
 - [Smart Scheduling](#smart-scheduling)
 - [Multi-Platform](#multi-platform)
 - [Proxy](#proxy)
+- [Application Withdrawal](#application-withdrawal)
+- [Dedup Engine](#dedup-engine)
+- [JD Change Tracker](#jd-change-tracker)
+- [Recruiter CRM](#recruiter-crm)
+- [Apply Scheduler](#apply-scheduler)
+- [Salary Negotiation](#salary-negotiation)
+- [ATS Status Scraper](#ats-status-scraper)
+- [Job Watchlist](#job-watchlist)
+- [Referral Automator](#referral-automator)
+- [Multi-Language](#multi-language)
 - [Logging](#logging)
 
 ---
@@ -316,7 +326,7 @@ dashboard:
   refresh_interval: 30           # Auto-refresh seconds
 ```
 
-Runs in a background thread. Dark theme, responsive design, works on mobile. Shows: stat cards, application funnel, recent applications with match scores, recruiter directory, visa sponsor list.
+Runs in a background thread. Completely rewritten as an all-in-one command center with 9 tabs: Overview, Applications, Recruiters, Salary, Skills, Interview Prep, Watchlist, Analytics, and System. Dark theme, responsive design, works on mobile.
 
 ## Alerts
 
@@ -418,6 +428,163 @@ proxy:
 ```
 
 Health-scored rotation: proxies are scored 0-1 based on success rate, latency, and recency. Failed proxies get exponential backoff cooldowns. After 10 consecutive failures, a proxy is auto-banned. Health data persists to disk.
+
+## Application Withdrawal
+
+```yaml
+application_withdrawal:
+  enabled: false
+  trigger: "offer_received"        # Withdraw pending apps when this event fires
+  exclude_companies: []            # Never auto-withdraw from these companies
+  withdraw_after_days: 0           # Also withdraw apps older than N days (0 = disabled)
+  dry_run: false                   # Log withdrawals without executing them
+```
+
+When you receive an offer (logged via the response tracking system), the bot automatically withdraws all other pending applications. Companies in `exclude_companies` are preserved. Set `dry_run: true` to preview which applications would be withdrawn.
+
+## Dedup Engine
+
+```yaml
+dedup:
+  enabled: true
+  similarity_threshold: 0.85       # 0.0-1.0; jobs above this score are considered duplicates
+  cross_platform: true             # Deduplicate across LinkedIn, Google Jobs, Indeed, etc.
+  fingerprint_fields:              # Fields used for fuzzy fingerprinting
+    - "title"
+    - "company"
+    - "location"
+  cache_days: 30                   # How long to keep fingerprints in cache
+```
+
+Uses fuzzy fingerprinting (normalized title + company + location) to detect duplicate job postings across platforms. A similarity score above the threshold marks the job as a duplicate and skips it. Fingerprints are cached in SQLite for the configured number of days.
+
+## JD Change Tracker
+
+```yaml
+jd_tracking:
+  enabled: false
+  check_interval_hours: 24         # How often to re-check applied job descriptions
+  track_salary_changes: true       # Alert when salary info changes
+  track_requirement_changes: true  # Alert when requirements change
+  max_tracked_jobs: 100            # Limit number of jobs actively tracked
+  alert_on_change: true            # Send alert (via configured alerts) on detected changes
+```
+
+After applying, the bot periodically re-fetches the job description and diffs it against the version you applied to. Detects salary changes, added/removed requirements, and description rewrites. Changes are logged in the database and optionally trigger alerts.
+
+## Recruiter CRM
+
+```yaml
+recruiter_crm:
+  enabled: false
+  score_weights:
+    response: 40                   # Points for responding to your message
+    view: 10                       # Points for viewing your profile
+    interaction: 20                # Points per interaction
+    referral: 30                   # Points for providing a referral
+  follow_up_days: 7               # Auto-reminder to follow up after N days
+  max_follow_ups: 3               # Maximum follow-up attempts per recruiter
+  export_csv: true                 # Export CRM data to CSV
+```
+
+Tracks every recruiter interaction (messages sent, responses received, profile views) and computes a relationship score. Generates follow-up reminders when a recruiter hasn't responded within the configured window. Limits follow-ups to avoid being pushy.
+
+## Apply Scheduler
+
+```yaml
+apply_scheduler:
+  enabled: false
+  peak_hours_start: 6              # 24h format — start of peak window
+  peak_hours_end: 10               # 24h format — end of peak window
+  queue_outside_peak: true         # Queue applications found outside peak hours
+  max_queue_size: 50               # Maximum jobs to hold in the queue
+  priority_boost_peak: 3.0         # Multiplier for jobs applied during peak (for ranking)
+```
+
+Studies show applications submitted between 6-10am local time receive up to 3x more recruiter views. The scheduler queues jobs discovered outside peak hours and batch-applies them during the optimal window. Jobs are ranked by match score within the queue.
+
+## Salary Negotiation
+
+```yaml
+salary_negotiation:
+  enabled: false
+  include_market_data: true        # Pull median salaries from your salary_data table
+  include_competing_offers: true   # Reference other offers in the brief (anonymized)
+  brief_format: "markdown"         # markdown, pdf, or txt
+  output_dir: "data/negotiation_briefs"
+  counter_range_percent: 15        # Suggest counter at +N% above their offer
+```
+
+When a job reaches the offer stage, auto-generates a negotiation brief with: market rate comparison (from your collected salary data), anonymized competing offer context, suggested counter range, and talking points. Briefs are saved to the output directory.
+
+## ATS Status Scraper
+
+```yaml
+ats_status_scraper:
+  enabled: false
+  supported_portals:
+    - "greenhouse"
+    - "workday"
+    - "lever"
+  check_interval_hours: 12         # How often to check for status updates
+  portal_credentials: {}           # Portal-specific credentials (if needed)
+  alert_on_status_change: true     # Send alert when status changes
+```
+
+Logs into ATS applicant portals and scrapes your application status (e.g., "Under Review", "Interview Scheduled", "Rejected"). Status changes are recorded in the database and trigger alerts. Supports Greenhouse, Workday, and Lever candidate portals.
+
+## Job Watchlist
+
+```yaml
+job_watchlist:
+  enabled: false
+  check_interval_hours: 6          # How often to verify watched jobs are still active
+  max_watched_jobs: 200            # Maximum jobs on the watchlist
+  auto_remove_expired: true        # Remove jobs that are no longer active
+  reminder_days: [3, 7, 14]        # Send reminders at these day intervals
+  alert_on_expiry: true            # Alert when a watched job is taken down
+```
+
+Smart bookmarking system for jobs you want to track without immediately applying. The bot periodically checks if watched jobs are still active and sends reminders at configured intervals. Expired jobs are optionally auto-removed with an alert.
+
+## Referral Automator
+
+```yaml
+referral_automator:
+  enabled: false
+  connection_degree: 1             # Only message 1st-degree connections
+  max_requests_per_day: 5          # Daily cap on referral request messages
+  message_template: ""             # Custom template (supports {contact_name}, {company}, {job_title})
+  skip_if_already_applied: false   # Skip if you've already applied without referral
+  cooldown_days: 30                # Don't re-request from same person within N days
+```
+
+Scans your 1st-degree LinkedIn connections for employees at target companies. Auto-drafts a personalized referral request message referencing the specific role. Messages are queued and sent with configurable daily caps and per-person cooldowns.
+
+## Multi-Language
+
+```yaml
+multi_language:
+  enabled: false
+  supported_languages:
+    - "en"
+    - "de"
+    - "fr"
+    - "es"
+    - "pt"
+    - "nl"
+    - "it"
+    - "ja"
+    - "ko"
+    - "zh"
+  auto_detect: true                # Auto-detect JD language
+  translate_resume: true           # Translate tailored resume to JD language
+  translate_cover_letter: true     # Translate cover letter to JD language
+  translation_provider: "ai"      # "ai" (uses configured LLM) or "deepl" (requires API key)
+  deepl_api_key: ""                # Required if translation_provider is "deepl"
+```
+
+Detects the language of each job description and, when it differs from your resume language, translates the tailored resume and cover letter. Supports 10 languages. Translation uses either your configured AI provider or DeepL for higher accuracy.
 
 ## Logging
 

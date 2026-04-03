@@ -17,6 +17,8 @@
         match_scorer   resume_tailor  alerts  dashboard    google_jobs_scraper
         external_apply recruiter_msg  salary  interview    activity_sim
         smart_sched    success_track  proxy   webapp       platform_plugins
+        dedup_engine   jd_change_tr   crm     watchlist    apply_scheduler
+        app_withdrawal salary_negot   status  referral     multi_language
 ```
 
 ## Data Flow
@@ -32,6 +34,9 @@ Extract Info (title, company, location)
     v
 Basic Filters (blacklist, bad titles, already applied)
     |  SKIP if filtered
+    v
+Dedup Check (fuzzy fingerprint against cross-platform cache)
+    |  SKIP if duplicate
     v
 Extract Full Details (description, salary, hiring team, visa)
     |
@@ -57,6 +62,12 @@ Store Salary    Generate Interview Prep -----> interview_prep table
     |               |
     v               v
 Send Alert      Track Hiring Velocity   -----> hiring_velocity table
+    |
+    v
+JD Change Tracker (snapshot JD for future diff)  -----> jd_snapshots table
+    |
+    v
+Add to Watchlist (if configured)  -----> job_watchlist table
     |
     v
 Export CSV

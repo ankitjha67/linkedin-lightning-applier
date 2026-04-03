@@ -153,6 +153,56 @@ try:
 except ImportError:
     FingerprintRotator = None
 
+try:
+    from application_withdrawal import ApplicationWithdrawer
+except ImportError:
+    ApplicationWithdrawer = None
+
+try:
+    from dedup_engine import DedupEngine
+except ImportError:
+    DedupEngine = None
+
+try:
+    from jd_change_tracker import JDChangeTracker
+except ImportError:
+    JDChangeTracker = None
+
+try:
+    from recruiter_crm import RecruiterCRM
+except ImportError:
+    RecruiterCRM = None
+
+try:
+    from apply_scheduler import ApplyScheduler
+except ImportError:
+    ApplyScheduler = None
+
+try:
+    from salary_negotiation import SalaryNegotiator
+except ImportError:
+    SalaryNegotiator = None
+
+try:
+    from status_scraper import ATSStatusScraper
+except ImportError:
+    ATSStatusScraper = None
+
+try:
+    from job_watchlist import JobWatchlist
+except ImportError:
+    JobWatchlist = None
+
+try:
+    from referral_automator import ReferralAutomator
+except ImportError:
+    ReferralAutomator = None
+
+try:
+    from multi_language import MultiLanguageGenerator
+except ImportError:
+    MultiLanguageGenerator = None
+
 
 # ===================================================================
 shutdown_requested = False
@@ -761,6 +811,16 @@ def run_forever(config_path: str):
     email_mon = EmailMonitor(cfg, state) if EmailMonitor else None
     profile_opt = ProfileOptimizer(ai_answerer, cfg, state) if ProfileOptimizer else None
     fp_rotator = FingerprintRotator(cfg) if FingerprintRotator else None
+    withdrawer = ApplicationWithdrawer(cfg, state) if ApplicationWithdrawer else None
+    dedup = DedupEngine(state) if DedupEngine else None
+    jd_tracker = JDChangeTracker(cfg, state) if JDChangeTracker else None
+    crm = RecruiterCRM(ai_answerer, cfg, state) if RecruiterCRM else None
+    apply_sched = ApplyScheduler(cfg, state) if ApplyScheduler else None
+    negotiator = SalaryNegotiator(ai_answerer, cfg, state) if SalaryNegotiator else None
+    ats_scraper = ATSStatusScraper(cfg, state) if ATSStatusScraper else None
+    watchlist = JobWatchlist(cfg, state) if JobWatchlist else None
+    referral_bot = ReferralAutomator(ai_answerer, cfg, state) if ReferralAutomator else None
+    multi_lang = MultiLanguageGenerator(ai_answerer, cfg) if MultiLanguageGenerator else None
 
     # Log enabled features
     features = []
@@ -783,6 +843,16 @@ def run_forever(config_path: str):
     if timing_opt and timing_opt.enabled: features.append("Apply Timing")
     if email_mon and email_mon.enabled: features.append("Email Monitor")
     if profile_opt and profile_opt.enabled: features.append("Profile Optimizer")
+    if withdrawer and withdrawer.enabled: features.append("Auto-Withdrawal")
+    if dedup and dedup.enabled: features.append("Dedup Engine")
+    if jd_tracker and jd_tracker.enabled: features.append("JD Change Tracker")
+    if crm and crm.enabled: features.append("Recruiter CRM")
+    if apply_sched and apply_sched.enabled: features.append("Apply Scheduler")
+    if negotiator and negotiator.enabled: features.append("Salary Negotiation")
+    if ats_scraper and ats_scraper.enabled: features.append("ATS Status Scraper")
+    if watchlist and watchlist.enabled: features.append("Job Watchlist")
+    if referral_bot and referral_bot.enabled: features.append("Referral Automator")
+    if multi_lang and multi_lang.enabled: features.append("Multi-Language")
     if dash and dash.enabled: features.append(f"Dashboard (:{dash.port})")
     if features:
         log.info(f"🚀 Features: {', '.join(features)}")
@@ -914,6 +984,43 @@ def run_forever(config_path: str):
                 email_mon.check_inbox()
             except Exception as e:
                 log.debug(f"Email monitor error: {e}")
+
+        # Process application withdrawals
+        if withdrawer and withdrawer.enabled:
+            try:
+                withdrawer.process_withdrawals(driver)
+            except Exception as e:
+                log.debug(f"Withdrawal error: {e}")
+
+        # Process referral requests
+        if referral_bot and referral_bot.enabled:
+            try:
+                referral_bot.process_requests(driver)
+            except Exception as e:
+                log.debug(f"Referral error: {e}")
+
+        # Check ATS portal statuses
+        if ats_scraper and ats_scraper.enabled:
+            try:
+                ats_scraper.check_all_statuses(driver)
+            except Exception as e:
+                log.debug(f"ATS status error: {e}")
+
+        # Check watchlist items still active
+        if watchlist and watchlist.enabled:
+            try:
+                watchlist.check_active_listings(driver)
+            except Exception as e:
+                log.debug(f"Watchlist check error: {e}")
+
+        # Process scheduled applies (time-of-day optimized)
+        if apply_sched and apply_sched.enabled:
+            try:
+                ready = apply_sched.get_ready_jobs()
+                for sj in ready[:5]:
+                    log.info(f"Scheduled apply ready: {sj.get('title','')} @ {sj.get('company','')}")
+            except Exception as e:
+                log.debug(f"Apply scheduler error: {e}")
 
         # Check daily summary
         if alert_mgr:
