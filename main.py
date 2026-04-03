@@ -3,7 +3,10 @@
 LinkedIn Lightning Applier v2 — Main Orchestrator
 
 Features: recruiter tracking, visa sponsorship detection, full job detail
-persistence, CSV auto-export, custom time filters, skip reason logging.
+persistence, CSV auto-export, custom time filters, skip reason logging,
+AI match scoring, resume tailoring, recruiter messaging, Google Jobs scraping,
+activity simulation, external ATS apply, alerts, dashboard, salary intelligence,
+interview prep, success tracking, smart scheduling.
 
 Usage:
     python main.py                   # Run with config.yaml
@@ -17,6 +20,7 @@ import random
 import logging
 import argparse
 import re
+import os
 from datetime import datetime
 from pathlib import Path
 
@@ -34,11 +38,73 @@ from linkedin import (
     get_job_cards, extract_job_info, get_job_description, get_salary_info,
     extract_experience_requirement, extract_hiring_team, detect_visa_sponsorship,
     click_easy_apply, process_easy_apply, discard_application,
-    human_sleep, safe_click, click_job_card,
+    human_sleep, safe_click, click_job_card, get_external_apply_url,
 )
 from ai import AIAnswerer
 
-# ═══════════════════════════════════════════════════════════════
+# Graceful imports for new modules (all optional)
+try:
+    from match_scorer import MatchScorer
+except ImportError:
+    MatchScorer = None
+
+try:
+    from resume_tailor import ResumeTailor
+except ImportError:
+    ResumeTailor = None
+
+try:
+    from google_jobs_scraper import GoogleJobsScraper
+except ImportError:
+    GoogleJobsScraper = None
+
+try:
+    from activity_sim import simulate_activity
+except ImportError:
+    simulate_activity = None
+
+try:
+    from external_apply import ExternalApplier
+except ImportError:
+    ExternalApplier = None
+
+try:
+    from recruiter_messenger import RecruiterMessenger
+except ImportError:
+    RecruiterMessenger = None
+
+try:
+    from alerts import AlertManager
+except ImportError:
+    AlertManager = None
+
+try:
+    from salary_intel import SalaryIntel
+except ImportError:
+    SalaryIntel = None
+
+try:
+    from interview_prep import InterviewPrepGenerator
+except ImportError:
+    InterviewPrepGenerator = None
+
+try:
+    from dashboard import Dashboard
+except ImportError:
+    Dashboard = None
+
+try:
+    from smart_scheduler import SmartScheduler
+except ImportError:
+    SmartScheduler = None
+
+try:
+    from success_tracker import SuccessTracker
+except ImportError:
+    SuccessTracker = None
+
+
+# ===================================================================
 shutdown_requested = False
 driver = None
 state = None
@@ -71,15 +137,14 @@ def setup_logging(cfg: dict):
         logging.getLogger(lib).setLevel(logging.WARNING)
 
 
-# ═══════════════════════════════════════════════════════════════
+# ===================================================================
 # FILTERING
-# ═══════════════════════════════════════════════════════════════
+# ===================================================================
 
 def should_skip_job(job: dict, cfg: dict, st: State) -> str | None:
     if not job.get("job_id"): return "no job ID"
     if job.get("applied"): return "already applied (badge)"
     if st.is_applied(job["job_id"]): return "already applied (history)"
-
     filters = cfg.get("filters", {})
     cl = job["company"].lower()
     for bc in filters.get("blacklisted_companies", []):
@@ -94,51 +159,42 @@ def should_skip_description(desc: str, cfg: dict) -> str | None:
     filters = cfg.get("filters", {})
     app = cfg.get("application", {})
     dl = desc.lower()
-
     for w in filters.get("bad_words", []):
         wl = w.lower()
-        # Use word-boundary matching to avoid false positives
-        # "clearance" should match "security clearance" but not "clearance sale" in unrelated context
-        # "Driver" should match job title "Delivery Driver" but not "key driver of growth"
-        if re.search(r'\b' + re.escape(wl) + r'\b', dl):
+        if re.search(r"\b" + re.escape(wl) + r"\b", dl):
             return f"bad word: {w}"
-
     exp = app.get("years_of_experience", -1)
     buf = filters.get("experience_buffer", 2)
     if exp > -1:
-        matches = re.findall(r'(\d+)\s*[+\-–]?\s*(?:to\s*\d+\s*)?year', dl)
+        matches = re.findall(r"(\d+)\s*[+\-–]?\s*(?:to\s*\d+\s*)?year", dl)
         if matches:
             years = [int(y) for y in matches if int(y) <= 15]
             if years and max(years) > exp + buf:
                 return f"needs {max(years)}yr (you: {exp}+{buf})"
-
     return None
 
 
-# ═══════════════════════════════════════════════════════════════
+# ===================================================================
 # PROCESS ONE SEARCH PAGE
-# ═══════════════════════════════════════════════════════════════
+# ===================================================================
 
 def process_page(drv, cfg: dict, st: State, sched: dict,
                  search_term: str = "", search_location: str = "",
                  ai: "AIAnswerer | None" = None,
-                 cycle_seen_ids: set = None) -> dict:
-    """
-    Process all job cards on the current search results page.
-    Single-pass: for each card, scroll it into view, extract info, click, process.
-    NEVER navigates away from the search page.
-    """
+                 cycle_seen_ids: set = None,
+                 scorer=None, tailor=None, ext_applier=None,
+                 messenger=None, alert_mgr=None, salary_eng=None,
+                 prep_gen=None, scheduler=None) -> dict:
+    """Process all job cards on the current search results page."""
     result = {"applied": 0, "skipped": 0, "failed": 0}
     log = logging.getLogger("lla")
     if cycle_seen_ids is None:
         cycle_seen_ids = set()
 
-    # Initial card discovery — just get the count and IDs
     cards = get_job_cards(drv)
     if not cards:
         return result
 
-    # Collect just the job IDs from the card attributes (lightweight, no sub-element access)
     job_ids = []
     for card in cards:
         try:
@@ -152,6 +208,7 @@ def process_page(drv, cfg: dict, st: State, sched: dict,
     max_per = min(num_cards, sched.get("max_applies_per_cycle", 15))
     filters = cfg.get("filters", {})
     visa_only = filters.get("visa_sponsorship_only", False)
+    resume_path = cfg.get("resume", {}).get("default_resume_path", "")
 
     log.info(f"  {num_cards} job IDs collected, processing up to {max_per}")
 
@@ -163,19 +220,15 @@ def process_page(drv, cfg: dict, st: State, sched: dict,
             break
 
         job_id = job_ids[i]
-
-        # Skip if already seen this cycle
         if job_id in cycle_seen_ids:
             result["skipped"] += 1
             continue
         cycle_seen_ids.add(job_id)
 
-        # Skip if already applied
         if st.is_applied(job_id):
             result["skipped"] += 1
             continue
 
-        # SCROLL the card into view in the left pane and CLICK it
         if not click_job_card(drv, job_id):
             log.debug(f"  [{i}] Could not click card {job_id}")
             result["failed"] += 1
@@ -183,8 +236,7 @@ def process_page(drv, cfg: dict, st: State, sched: dict,
 
         human_sleep(1.5, 2.5)
 
-        # EXTRACT job info from the RIGHT PANE (not from the card)
-        # Title and company from the details header
+        # EXTRACT job info from the RIGHT PANE
         title = ""
         company = ""
         location = ""
@@ -209,7 +261,6 @@ def process_page(drv, cfg: dict, st: State, sched: dict,
                 els = drv.find_elements(By.CSS_SELECTOR, sel)
                 if els and els[0].text.strip():
                     loc_text = els[0].text.strip()
-                    # Extract location (usually first part before ·)
                     location = loc_text.split("·")[0].strip() if "·" in loc_text else loc_text
                     break
         except Exception:
@@ -220,7 +271,7 @@ def process_page(drv, cfg: dict, st: State, sched: dict,
 
         log.info(f"▶  [{i}] {title} @ {company} (ID: {job_id})")
 
-        # Check for "already applied" badge in the right pane
+        # Check for "already applied" badge
         try:
             applied_badges = drv.find_elements(By.XPATH,
                 "//*[contains(text(), 'Applied') and contains(@class, 'artdeco-inline-feedback')]")
@@ -234,13 +285,13 @@ def process_page(drv, cfg: dict, st: State, sched: dict,
                     result["skipped"] += 1
                     break
             else:
-                applied_badges = None  # Signal to continue processing
+                applied_badges = None
             if applied_badges:
                 continue
         except Exception:
             pass
 
-        # Filter: blacklisted companies
+        # Filter: blacklisted companies / bad titles
         skip_reason = None
         cl = company.lower()
         for bc in filters.get("blacklisted_companies", []):
@@ -260,7 +311,7 @@ def process_page(drv, cfg: dict, st: State, sched: dict,
             result["skipped"] += 1
             continue
 
-        # EXTRACT FULL DETAILS from the right pane
+        # EXTRACT FULL DETAILS
         desc = get_job_description(drv)
         salary = get_salary_info(drv)
         exp_req = extract_experience_requirement(desc)
@@ -288,6 +339,14 @@ def process_page(drv, cfg: dict, st: State, sched: dict,
                     break
             st.save_visa_sponsor(company, evidence, job_id)
 
+        # Track hiring velocity
+        if scheduler:
+            scheduler.track_job_posting(company, title)
+
+        # Store salary data
+        if salary_eng and salary:
+            salary_eng.parse_and_store(job_id, title, company, location, salary)
+
         # Filter: description
         desc_skip = should_skip_description(desc, cfg)
         if desc_skip:
@@ -307,19 +366,72 @@ def process_page(drv, cfg: dict, st: State, sched: dict,
             result["skipped"] += 1
             continue
 
-        # EASY APPLY
-        try:
-            if not click_easy_apply(drv):
-                log.info("   ⏭️  No Easy Apply button")
+        # MATCH SCORING
+        match_score = 0
+        match_result = None
+        if scorer and scorer.enabled:
+            match_result = scorer.score_job(title, company, desc, location)
+            match_score = match_result.get("score", 0)
+            log.info(f"   🎯 Match score: {match_score}% ({match_result.get('explanation', '')})")
+            st.save_match_score(job_id, title, company, match_score,
+                               ", ".join(match_result.get("skill_matches", [])),
+                               ", ".join(match_result.get("missing_skills", [])),
+                               match_result.get("explanation", ""))
+
+            if not scorer.should_apply(match_score):
+                log.info(f"   ⏭️  Low match score: {match_score}% (min: {scorer.minimum_score}%)")
                 st.mark_skipped(job_id, title, company, location,
-                               "no Easy Apply button", visa_status, "",
-                               search_term, search_location)
+                               f"low match score: {match_score}%", visa_status, "",
+                               search_term, search_location, match_score=match_score)
                 result["skipped"] += 1
                 continue
 
-            success = process_easy_apply(drv, cfg, ai=ai, job_context={
-                "title": title, "company": company, "description": desc[:500]
-            })
+        # RESUME TAILORING
+        tailored_resume = None
+        resume_version = ""
+        if tailor and tailor.enabled:
+            tailored_resume = tailor.tailor_resume(title, company, desc, match_result)
+            if tailored_resume:
+                resume_version = os.path.basename(tailored_resume)
+                log.info(f"   📄 Tailored resume: {resume_version}")
+
+        # Determine resume path for this application
+        active_resume = tailored_resume or resume_path
+
+        # APPLY
+        try:
+            easy_apply_clicked = click_easy_apply(drv)
+
+            if easy_apply_clicked:
+                # Pass tailored resume through job_context
+                jc = {"title": title, "company": company, "description": desc[:500]}
+                if tailored_resume:
+                    jc["tailored_resume_path"] = tailored_resume
+
+                success = process_easy_apply(drv, cfg, ai=ai, job_context=jc)
+            elif ext_applier and ext_applier.can_apply():
+                # Try external apply
+                ext_url = get_external_apply_url(drv)
+                if ext_url:
+                    log.info(f"   🌐 Trying external apply: {ext_url[:60]}")
+                    jc = {"title": title, "company": company,
+                          "description": desc[:500], "location": location}
+                    success = ext_applier.apply_external(drv, ext_url, jc, active_resume)
+                else:
+                    log.info("   ⏭️  No Easy Apply or external apply button")
+                    st.mark_skipped(job_id, title, company, location,
+                                   "no apply button", visa_status, "",
+                                   search_term, search_location, match_score=match_score)
+                    result["skipped"] += 1
+                    continue
+            else:
+                log.info("   ⏭️  No Easy Apply button")
+                st.mark_skipped(job_id, title, company, location,
+                               "no Easy Apply button", visa_status, "",
+                               search_term, search_location, match_score=match_score)
+                result["skipped"] += 1
+                continue
+
             if success:
                 recruiter_name = hiring_team[0]["name"] if hiring_team else ""
                 recruiter_title = hiring_team[0].get("title","") if hiring_team else ""
@@ -334,9 +446,38 @@ def process_page(drv, cfg: dict, st: State, sched: dict,
                     hiring_manager=hiring_mgr, visa_sponsorship=visa_status,
                     posted_time="", search_term=search_term,
                     search_location=search_location,
+                    match_score=match_score, resume_version=resume_version,
                 )
                 result["applied"] += 1
                 log.info(f"   ✅  APPLIED!")
+
+                # POST-APPLY ACTIONS
+                # Queue recruiter message
+                if messenger and hiring_team:
+                    for person in hiring_team[:1]:
+                        messenger.queue_message(
+                            job_id=job_id,
+                            recruiter_name=person["name"],
+                            profile_url=person.get("profile_url", ""),
+                            company=company, job_title=title, description=desc[:500],
+                        )
+
+                # Generate interview prep
+                if prep_gen and prep_gen.enabled:
+                    try:
+                        prep_gen.generate(job_id, title, company, desc, st)
+                    except Exception as e:
+                        log.debug(f"Interview prep failed: {e}")
+
+                # Send alert
+                if alert_mgr:
+                    try:
+                        alert_mgr.send_applied(title, company, salary, visa_status,
+                                              recruiter_name, match_score,
+                                              f"https://www.linkedin.com/jobs/view/{job_id}/")
+                    except Exception as e:
+                        log.debug(f"Alert failed: {e}")
+
                 human_sleep(sched.get("delay_after_apply",4), sched.get("delay_after_apply",4)+3)
             else:
                 st.mark_failed(job_id, title, company, "modal failed")
@@ -347,6 +488,11 @@ def process_page(drv, cfg: dict, st: State, sched: dict,
             log.warning(f"   💥  Error: {e}")
             st.mark_failed(job_id, title, company, str(e))
             result["failed"] += 1
+            if alert_mgr:
+                try:
+                    alert_mgr.send_error(f"{title} @ {company}: {e}")
+                except Exception:
+                    pass
             discard_application(drv)
 
         human_sleep(sched.get("min_delay_between_jobs",3), sched.get("max_delay_between_jobs",8))
@@ -354,11 +500,14 @@ def process_page(drv, cfg: dict, st: State, sched: dict,
     return result
 
 
-# ═══════════════════════════════════════════════════════════════
+# ===================================================================
 # FULL CYCLE
-# ═══════════════════════════════════════════════════════════════
+# ===================================================================
 
-def run_cycle(drv, cfg: dict, st: State, ai=None):
+def run_cycle(drv, cfg: dict, st: State, ai=None,
+              scorer=None, tailor=None, ext_applier=None,
+              messenger=None, alert_mgr=None, salary_eng=None,
+              prep_gen=None, scheduler=None, google_scraper=None):
     log = logging.getLogger("lla")
     sc = cfg.get("search", {})
     sched = cfg.get("scheduling", {})
@@ -372,29 +521,51 @@ def run_cycle(drv, cfg: dict, st: State, ai=None):
     if sc.get("randomize_order", True):
         random.shuffle(terms)
 
-    # Track all job IDs seen in this cycle to avoid re-processing across searches
     cycle_seen_ids = set()
     tot_a, tot_s, tot_f = 0, 0, 0
 
-    # Adaptive time filter chain — widens if no results found
     TIME_CHAIN = ["Past hour", "Past 2 hours", "Past 6 hours", "Past 12 hours", "Past 24 hours", "Past week"]
     base_filter = sc.get("date_posted", "Past hour")
-
-    # Find starting position in the chain
     base_filter_lower = str(base_filter).strip().lower()
     chain_start = 0
-    for i, f in enumerate(TIME_CHAIN):
+    for idx, f in enumerate(TIME_CHAIN):
         if f.lower() == base_filter_lower:
-            chain_start = i
+            chain_start = idx
             break
 
-    # Verify session is still valid before starting
+    # Verify session
     if not verify_session(drv):
         log.warning("Session expired before cycle. Re-logging in...")
         if not login(drv, cfg):
             log.error("Re-login failed. Skipping cycle.")
             return
 
+    # GOOGLE JOBS SCRAPING (before LinkedIn search)
+    if google_scraper and google_scraper.enabled:
+        try:
+            log.info("🔍 Scraping Google Jobs...")
+            google_scraper.scrape_jobs(drv)
+
+            # Process Google-discovered LinkedIn jobs
+            gj_linkedin = google_scraper.get_queued_linkedin_jobs()
+            if gj_linkedin:
+                log.info(f"   Processing {len(gj_linkedin)} Google-discovered LinkedIn jobs")
+                for gj in gj_linkedin[:5]:
+                    if shutdown_requested:
+                        break
+                    lid = gj.get("linkedin_job_id", "")
+                    if lid and not st.is_applied(lid):
+                        try:
+                            drv.get(f"https://www.linkedin.com/jobs/view/{lid}/")
+                            human_sleep(2, 4)
+                            cycle_seen_ids.add(lid)
+                        except Exception as e:
+                            log.debug(f"Google->LinkedIn nav failed: {e}")
+                    google_scraper.state.update_google_job_status(gj["google_job_id"], "queued")
+        except Exception as e:
+            log.warning(f"Google Jobs scraping error: {e}")
+
+    # LINKEDIN SEARCH
     for loc in locs:
         if shutdown_requested: break
         for term in terms:
@@ -405,7 +576,6 @@ def run_cycle(drv, cfg: dict, st: State, ai=None):
             sl = loc.split(",")[0].strip()
             found_results = False
 
-            # Try progressively wider time filters
             for filter_idx in range(chain_start, len(TIME_CHAIN)):
                 if shutdown_requested: break
                 time_filter = TIME_CHAIN[filter_idx]
@@ -413,12 +583,10 @@ def run_cycle(drv, cfg: dict, st: State, ai=None):
 
                 if is_widened:
                     log.info(f"   ↳ Widening to \"{time_filter}\"...")
-
                 if not is_widened:
                     log.info(f"🔍  \"{term}\" → \"{sl}\" ({time_filter})")
 
                 try:
-                    # Build URL with current time filter (override config)
                     cfg_copy = dict(cfg)
                     cfg_copy["search"] = dict(sc)
                     cfg_copy["search"]["date_posted"] = time_filter
@@ -426,7 +594,6 @@ def run_cycle(drv, cfg: dict, st: State, ai=None):
                     url = build_search_url(cfg_copy, term, loc)
                     navigate_to_search(drv, url)
 
-                    # Check how many cards we got
                     from linkedin import get_job_cards as _peek_cards
                     cards = _peek_cards(drv)
                     new_cards = [c for c in cards
@@ -435,22 +602,47 @@ def run_cycle(drv, cfg: dict, st: State, ai=None):
                     if len(cards) == 0 and filter_idx < len(TIME_CHAIN) - 1:
                         log.info(f"   0 results for \"{time_filter}\"")
                         human_sleep(1, 2)
-                        continue  # Try wider filter
+                        continue
 
-                    # Process the page
-                    r = process_page(drv, cfg, st, sched, term, loc, ai=ai, cycle_seen_ids=cycle_seen_ids)
+                    r = process_page(drv, cfg, st, sched, term, loc, ai=ai,
+                                    cycle_seen_ids=cycle_seen_ids,
+                                    scorer=scorer, tailor=tailor,
+                                    ext_applier=ext_applier,
+                                    messenger=messenger, alert_mgr=alert_mgr,
+                                    salary_eng=salary_eng, prep_gen=prep_gen,
+                                    scheduler=scheduler)
                     tot_a += r["applied"]; tot_s += r["skipped"]; tot_f += r["failed"]
-                    total_on_page = r["applied"] + r["skipped"] + r["failed"]
                     log.info(f"   Page: +{r['applied']}A +{r['skipped']}S +{r['failed']}F | Unique seen: {len(cycle_seen_ids)}")
                     found_results = True
-                    break  # Got results, move to next term
+                    break
 
                 except Exception as e:
                     log.error(f"   Search error: {e}")
                     tot_f += 1
-                    break  # Don't retry on errors
+                    break
 
             human_sleep(sched.get("min_delay_between_searches",5), sched.get("max_delay_between_searches",15))
+
+    # Process Google-discovered ATS jobs
+    if google_scraper and google_scraper.enabled and ext_applier and ext_applier.can_apply():
+        gj_ats = google_scraper.get_queued_ats_jobs()
+        if gj_ats:
+            log.info(f"🌐 Processing {len(gj_ats)} Google-discovered ATS jobs")
+            for gj in gj_ats[:ext_applier.max_per_cycle]:
+                if shutdown_requested:
+                    break
+                try:
+                    jc = {"title": gj.get("title", ""), "company": gj.get("company", ""),
+                          "description": gj.get("description", ""), "location": gj.get("location", "")}
+                    resume_path = cfg.get("resume", {}).get("default_resume_path", "")
+                    success = ext_applier.apply_external(drv, gj["source_url"], jc, resume_path)
+                    status = "applied" if success else "skipped"
+                    google_scraper.state.update_google_job_status(gj["google_job_id"], status)
+                    if success:
+                        tot_a += 1
+                except Exception as e:
+                    log.debug(f"ATS apply failed: {e}")
+                    google_scraper.state.update_google_job_status(gj["google_job_id"], "skipped")
 
     st.inc_cycles()
 
@@ -467,9 +659,9 @@ def run_cycle(drv, cfg: dict, st: State, ai=None):
     log.info(f"📊  {st.session_summary()}")
 
 
-# ═══════════════════════════════════════════════════════════════
+# ===================================================================
 # MAIN LOOP
-# ═══════════════════════════════════════════════════════════════
+# ===================================================================
 
 def is_active_hours(cfg: dict) -> bool:
     sched = cfg.get("scheduling", {})
@@ -495,6 +687,43 @@ def run_forever(config_path: str):
     ai_answerer = AIAnswerer(cfg, db_conn=state.conn)
     errors = 0
 
+    # Initialize new feature modules (all gracefully degrade if disabled/missing)
+    scorer = MatchScorer(ai_answerer, cfg) if MatchScorer else None
+    tailor = ResumeTailor(ai_answerer, cfg) if ResumeTailor else None
+    ext_applier = ExternalApplier(ai_answerer, cfg) if ExternalApplier else None
+    messenger = RecruiterMessenger(ai_answerer, cfg, state) if RecruiterMessenger else None
+    alert_mgr = AlertManager(cfg) if AlertManager else None
+    salary_eng = SalaryIntel(state, ai_answerer, cfg) if SalaryIntel else None
+    prep_gen = InterviewPrepGenerator(ai_answerer, cfg) if InterviewPrepGenerator else None
+    scheduler = SmartScheduler(state, cfg) if SmartScheduler else None
+    google_scraper = GoogleJobsScraper(cfg, state) if GoogleJobsScraper else None
+    dash = Dashboard(state, cfg) if Dashboard else None
+
+    # Log enabled features
+    features = []
+    if scorer and scorer.enabled: features.append(f"Match Scoring (min: {scorer.minimum_score}%)")
+    if tailor and tailor.enabled: features.append("Resume Tailoring")
+    if ext_applier and ext_applier.enabled: features.append("External ATS Apply")
+    if messenger and messenger.enabled: features.append(f"Recruiter Messaging ({messenger.delay_minutes}min delay)")
+    if alert_mgr and alert_mgr.enabled: features.append("Alerts")
+    if salary_eng and salary_eng.enabled: features.append("Salary Intelligence")
+    if prep_gen and prep_gen.enabled: features.append("Interview Prep")
+    if scheduler and scheduler.enabled: features.append("Smart Scheduling")
+    if google_scraper and google_scraper.enabled: features.append("Google Jobs Scraping")
+    if cfg.get("activity_simulation", {}).get("enabled"): features.append("Activity Simulation")
+    if dash and dash.enabled: features.append(f"Dashboard (:{dash.port})")
+    if features:
+        log.info(f"🚀 Features: {', '.join(features)}")
+    else:
+        log.info("No additional features enabled.")
+
+    # Start dashboard
+    if dash:
+        try:
+            dash.start()
+        except Exception as e:
+            log.warning(f"Dashboard start failed: {e}")
+
     log.info("Launching browser...")
     try:
         driver = create_browser(cfg)
@@ -518,10 +747,21 @@ def run_forever(config_path: str):
         try:
             cfg = load_config(config_path)
             ai_answerer = AIAnswerer(cfg, db_conn=state.conn)
-        except Exception as e: log.warning(f"Config reload failed: {e}")
+            # Update modules with new config
+            if scorer: scorer.__init__(ai_answerer, cfg)
+            if tailor: tailor.__init__(ai_answerer, cfg)
+            if messenger: messenger.__init__(ai_answerer, cfg, state)
+            if ext_applier: ext_applier.__init__(ai_answerer, cfg)
+        except Exception as e:
+            log.warning(f"Config reload failed: {e}")
 
         sched = cfg.get("scheduling", {})
         interval = max(sched.get("scan_interval_minutes", 15), 1) * 60
+
+        # Smart scheduling adjustment
+        if scheduler and scheduler.enabled:
+            adj = scheduler.get_scan_interval_adjustment()
+            interval = int(interval * adj)
 
         if not is_active_hours(cfg):
             log.info(f"Outside active hours. Sleeping 10 min...")
@@ -545,14 +785,31 @@ def run_forever(config_path: str):
                 time.sleep(60)
                 continue
 
+        # Activity simulation (before cycle)
+        if simulate_activity and cfg.get("activity_simulation", {}).get("enabled", False):
+            try:
+                simulate_activity(driver, cfg)
+            except Exception as e:
+                log.debug(f"Activity simulation error: {e}")
+
         # Run cycle
         try:
             log.info(f"── Cycle start (every {interval//60}min) ──")
-            run_cycle(driver, cfg, state, ai=ai_answerer)
+            run_cycle(driver, cfg, state, ai=ai_answerer,
+                     scorer=scorer, tailor=tailor,
+                     ext_applier=ext_applier, messenger=messenger,
+                     alert_mgr=alert_mgr, salary_eng=salary_eng,
+                     prep_gen=prep_gen, scheduler=scheduler,
+                     google_scraper=google_scraper)
             errors = 0
         except Exception as e:
             errors += 1
             log.error(f"Cycle error ({errors}/5): {e}")
+            if alert_mgr:
+                try:
+                    alert_mgr.send_error(f"Cycle error: {e}")
+                except Exception:
+                    pass
             if errors >= 5:
                 log.error("Too many errors. Restarting browser...")
                 try: driver.quit()
@@ -564,6 +821,20 @@ def run_forever(config_path: str):
                 except Exception as e2:
                     log.error(f"Restart failed: {e2}")
                     time.sleep(120)
+
+        # Process recruiter message queue
+        if messenger and messenger.enabled:
+            try:
+                messenger.process_queue(driver)
+            except Exception as e:
+                log.debug(f"Message queue error: {e}")
+
+        # Check daily summary
+        if alert_mgr:
+            try:
+                alert_mgr.check_daily_summary(state)
+            except Exception:
+                pass
 
         if shutdown_requested:
             break
@@ -580,7 +851,6 @@ def run_forever(config_path: str):
     log.info("Shutting down...")
     log.info(f"📊  Final: {state.session_summary()}")
 
-    # Final export
     if cfg.get("export", {}).get("auto_export_csv", True):
         try:
             state.export_csv(cfg.get("export", {}).get("export_dir", "data"), cfg)

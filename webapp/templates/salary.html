@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Salary Intelligence — LLA</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f5f5; }
+        .nav { background: #0a66c2; padding: 15px 30px; color: white; }
+        .nav h1 { font-size: 1.4em; display: inline; }
+        .nav a { color: white; text-decoration: none; margin-left: 20px; }
+        .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
+        table { width: 100%; border-collapse: collapse; background: white; border-radius: 8px;
+                overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        th { background: #f0f0f0; padding: 12px; text-align: left; }
+        td { padding: 10px 12px; border-top: 1px solid #eee; }
+        tr:hover { background: #f8f8ff; }
+    </style>
+</head>
+<body>
+    <div class="nav">
+        <h1>LLA</h1>
+        <a href="/">Dashboard</a>
+        <a href="/jobs">Jobs</a>
+        <a href="/recruiters">Recruiters</a>
+        <a href="/salary">Salary</a>
+        <a href="/interview-prep">Interview Prep</a>
+    </div>
+    <div class="container">
+        <h2 style="margin-bottom:15px">Salary Intelligence ({{ salary_data|length }} data points)</h2>
+        <table>
+            <tr><th>Title</th><th>Company</th><th>Location</th><th>Raw</th>
+                <th>Min</th><th>Max</th><th>Currency</th><th>Period</th></tr>
+            {% for d in salary_data %}
+            <tr>
+                <td>{{ d.title[:40] }}</td>
+                <td>{{ d.company[:25] }}</td>
+                <td>{{ d.location[:20] }}</td>
+                <td>{{ (d.salary_raw or '')[:25] }}</td>
+                <td>{{ '{:,.0f}'.format(d.salary_min) if d.salary_min else '-' }}</td>
+                <td>{{ '{:,.0f}'.format(d.salary_max) if d.salary_max else '-' }}</td>
+                <td>{{ d.currency }}</td>
+                <td>{{ d.period }}</td>
+            </tr>
+            {% endfor %}
+        </table>
+    </div>
+</body>
+</html>

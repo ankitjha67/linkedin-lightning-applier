@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Recruiters — LLA</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f5f5; }
+        .nav { background: #0a66c2; padding: 15px 30px; color: white; }
+        .nav h1 { font-size: 1.4em; display: inline; }
+        .nav a { color: white; text-decoration: none; margin-left: 20px; }
+        .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
+        table { width: 100%; border-collapse: collapse; background: white; border-radius: 8px;
+                overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        th { background: #f0f0f0; padding: 12px; text-align: left; }
+        td { padding: 10px 12px; border-top: 1px solid #eee; }
+        tr:hover { background: #f8f8ff; }
+        a { color: #0a66c2; }
+    </style>
+</head>
+<body>
+    <div class="nav">
+        <h1>LLA</h1>
+        <a href="/">Dashboard</a>
+        <a href="/jobs">Jobs</a>
+        <a href="/recruiters">Recruiters</a>
+        <a href="/salary">Salary</a>
+        <a href="/interview-prep">Interview Prep</a>
+    </div>
+    <div class="container">
+        <h2 style="margin-bottom:15px">Recruiter Directory ({{ recruiters|length }})</h2>
+        <table>
+            <tr><th>Name</th><th>Title</th><th>Company</th><th>Job Title</th><th>Profile</th><th>Seen</th></tr>
+            {% for r in recruiters %}
+            <tr>
+                <td>{{ r.name }}</td>
+                <td>{{ (r.title or '')[:35] }}</td>
+                <td>{{ r.company }}</td>
+                <td>{{ (r.job_title or '')[:35] }}</td>
+                <td>{% if r.profile_url %}<a href="{{ r.profile_url }}" target="_blank">View</a>{% endif %}</td>
+                <td>{{ r.seen_at[:10] if r.seen_at else '' }}</td>
+            </tr>
+            {% endfor %}
+        </table>
+    </div>
+</body>
+</html>

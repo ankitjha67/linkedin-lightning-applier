@@ -306,3 +306,151 @@ logging:
   level: "INFO"
   log_to_file: true
   log_dir: "logs"
+
+# ═══════════════════════════════════════════════════════════════
+# MATCH SCORING — AI scores job-candidate fit before applying
+# ═══════════════════════════════════════════════════════════════
+match_scoring:
+  enabled: true
+  minimum_score: 70            # Only apply to jobs scoring above this (0-100)
+  score_in_csv: true           # Include match scores in CSV exports
+
+# ═══════════════════════════════════════════════════════════════
+# RESUME TAILORING — AI generates custom resume per job
+# ═══════════════════════════════════════════════════════════════
+resume_tailoring:
+  enabled: true
+  master_resume_path: ""       # Path to master resume (PDF/DOCX/TXT)
+  master_resume_text: ""       # Or paste resume text here (overrides file)
+  output_dir: "data/tailored_resumes"
+  format: "pdf"                # pdf, docx, or txt
+  template_style: "professional"  # professional, modern, minimal
+
+# ═══════════════════════════════════════════════════════════════
+# RECRUITER MESSAGING — Auto-message recruiters after applying
+# ═══════════════════════════════════════════════════════════════
+recruiter_messaging:
+  enabled: true
+  delay_minutes: 120           # Wait N minutes after applying before messaging
+  max_messages_per_day: 10
+  message_template: ""         # Custom template (use {recruiter_name}, {job_title}, {company})
+  skip_if_no_profile_url: true
+
+# ═══════════════════════════════════════════════════════════════
+# EXTERNAL APPLY — Fill ATS forms (Greenhouse, Lever, Workday)
+# ═══════════════════════════════════════════════════════════════
+external_apply:
+  enabled: true
+  supported_ats:
+    - "greenhouse"
+    - "lever"
+    - "workday"
+    - "ashby"
+  max_external_per_cycle: 5
+  timeout_seconds: 120
+
+# ═══════════════════════════════════════════════════════════════
+# GOOGLE JOBS — Scrape Google Jobs for additional job discovery
+# ═══════════════════════════════════════════════════════════════
+google_jobs:
+  enabled: true
+  use_serpapi: false            # Use SerpAPI for structured data (paid)
+  serpapi_key: ""
+  scrape_interval_minutes: 30
+  max_results_per_query: 50
+  search_queries: []            # Auto-generates from search terms if empty
+  country_code: "uk"
+  date_posted: "today"          # today, 3days, week, month
+  deduplicate_with_linkedin: true
+
+# ═══════════════════════════════════════════════════════════════
+# DASHBOARD — Real-time monitoring web dashboard
+# ═══════════════════════════════════════════════════════════════
+dashboard:
+  enabled: true
+  port: 5000
+  host: "0.0.0.0"
+  refresh_interval: 30          # Auto-refresh interval in seconds
+
+# ═══════════════════════════════════════════════════════════════
+# ALERTS — Telegram, Discord, Slack notifications
+# ═══════════════════════════════════════════════════════════════
+alerts:
+  enabled: false
+  telegram:
+    enabled: false
+    bot_token: ""               # Get from @BotFather on Telegram
+    chat_id: ""                 # Your chat/group ID
+  discord:
+    enabled: false
+    webhook_url: ""             # Discord webhook URL
+  slack:
+    enabled: false
+    webhook_url: ""             # Slack incoming webhook URL
+  on_apply: true
+  on_error: true
+  daily_summary: true
+  daily_summary_time: "22:00"
+
+# ═══════════════════════════════════════════════════════════════
+# ACTIVITY SIMULATION — Look human between apply cycles
+# ═══════════════════════════════════════════════════════════════
+activity_simulation:
+  enabled: true
+  actions_per_cycle: 5          # Number of random actions (or "3-7" for range)
+  view_profiles: true
+  like_posts: true
+  scroll_feed: true
+
+# ═══════════════════════════════════════════════════════════════
+# SALARY INTELLIGENCE — Aggregate and benchmark salary data
+# ═══════════════════════════════════════════════════════════════
+salary_intelligence:
+  enabled: true
+  export_csv: true
+
+# ═══════════════════════════════════════════════════════════════
+# INTERVIEW PREP — Auto-generate prep after applying
+# ═══════════════════════════════════════════════════════════════
+interview_prep:
+  enabled: true
+  auto_generate: true
+
+# ═══════════════════════════════════════════════════════════════
+# SUCCESS TRACKING — Track response rates and correlations
+# ═══════════════════════════════════════════════════════════════
+success_tracking:
+  enabled: true
+
+# ═══════════════════════════════════════════════════════════════
+# SMART SCHEDULING — Prioritize fast-hiring companies
+# ═══════════════════════════════════════════════════════════════
+smart_scheduling:
+  enabled: true
+  prioritize_fast_hiring: true
+
+# ═══════════════════════════════════════════════════════════════
+# MULTI-PLATFORM — Support for Indeed, Glassdoor, etc.
+# ═══════════════════════════════════════════════════════════════
+multi_platform:
+  enabled: false
+  platforms:
+    - "linkedin"
+    # - "indeed"
+    # - "glassdoor"
+
+# ═══════════════════════════════════════════════════════════════
+# PROXY — Proxy rotation and multi-profile
+# ═══════════════════════════════════════════════════════════════
+proxy:
+  enabled: false
+  proxy_list: []               # ["http://ip:port", "socks5://ip:port"]
+  proxy_file: ""               # Path to proxy list file (one per line)
+  rotate_per_session: true
+  profiles_dir: "data/profiles"
+
+# ═══════════════════════════════════════════════════════════════
+# DOCKER — Container deployment settings
+# ═══════════════════════════════════════════════════════════════
+docker:
+  health_check_port: 8080

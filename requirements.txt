@@ -1,5 +1,20 @@
+# Core dependencies
 undetected-chromedriver>=3.5.0
 selenium>=4.15.0
 PyYAML>=6.0
 openai>=1.30.0
 anthropic>=0.25.0
+
+# Resume tailoring
+fpdf2>=2.7.0
+python-docx>=1.0.0
+
+# Dashboard & web app
+flask>=3.0.0
+
+# Alerts & Google Jobs scraping
+requests>=2.31.0
+beautifulsoup4>=4.12.0
+
+# Google Jobs via SerpAPI (optional — only if google_jobs.use_serpapi=true)
+# google-search-results>=2.4.0

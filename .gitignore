@@ -1,6 +1,8 @@
 # Data & logs
 data/
 logs/
+data/tailored_resumes/
+data/profiles/
 
 # Python
 __pycache__/
