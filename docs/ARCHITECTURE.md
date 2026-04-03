@@ -122,14 +122,24 @@ main.py
   ├── interview_prep.py (depends on: ai.py)
   ├── success_tracker.py (depends on: state.py)
   ├── smart_scheduler.py (depends on: state.py)
-  └── proxy_manager.py  (standalone, optional: requests)
+  ├── proxy_manager.py  (standalone, optional: requests)
+  ├── application_withdrawal.py (depends on: state.py)
+  ├── dedup_engine.py   (depends on: state.py)
+  ├── jd_change_tracker.py (depends on: state.py, ai.py)
+  ├── recruiter_crm.py  (depends on: state.py)
+  ├── apply_scheduler.py (depends on: state.py)
+  ├── salary_negotiation.py (depends on: state.py, ai.py)
+  ├── status_scraper.py (depends on: selenium, state.py)
+  ├── job_watchlist.py  (depends on: state.py, selenium)
+  ├── referral_automator.py (depends on: ai.py, state.py, selenium)
+  └── multi_language.py (depends on: ai.py, optional: deepl)
 ```
 
 Every module except the 4 core files (main, linkedin, ai, state) is imported with `try/except` and degrades gracefully if missing or disabled.
 
 ## Database Schema
 
-SQLite database at `data/state.db` with 13 tables:
+SQLite database at `data/state.db` with 21 tables:
 
 ### Core Tables
 
@@ -158,6 +168,19 @@ SQLite database at `data/state.db` with 13 tables:
 | `google_jobs` | Google Jobs discoveries | google_job_id (PK), source_url, source_platform, linkedin_job_id, status |
 | `response_tracking` | Application outcomes | job_id, response_type, match_score, recruiter_messaged, days_to_response |
 | `hiring_velocity` | Company hiring speed | company + title_pattern (PK), days_active, filled |
+
+### New Feature Tables (v2.1)
+
+| Table | Purpose | Key Columns |
+|-------|---------|-------------|
+| `dedup_fingerprints` | Fuzzy fingerprint cache for cross-platform dedup | fingerprint_hash (PK), title, company, platform, created_at |
+| `jd_snapshots` | JD version history for change tracking | job_id, snapshot_text, captured_at, diff_from_previous |
+| `recruiter_interactions` | CRM interaction log | recruiter_id, interaction_type, notes, timestamp, score_delta |
+| `recruiter_scores` | Computed relationship scores | recruiter_id (PK), total_score, last_interaction, follow_up_due |
+| `apply_queue` | Time-optimized application queue | job_id (PK), queued_at, scheduled_for, priority_score, status |
+| `negotiation_briefs` | Generated salary negotiation documents | job_id (PK), market_median, counter_suggestion, brief_path |
+| `ats_statuses` | Scraped ATS portal statuses | job_id, portal, status, last_checked, status_changed_at |
+| `job_watchlist` | Bookmarked jobs with activity tracking | job_id (PK), added_at, last_checked, is_active, next_reminder |
 
 ### Schema Migrations
 

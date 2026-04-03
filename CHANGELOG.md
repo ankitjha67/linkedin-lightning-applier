@@ -1,5 +1,41 @@
 # Changelog
 
+## v2.1.0 — Intelligence & Automation Expansion
+
+### Added
+
+**Application Lifecycle Management**
+- **Application Withdrawal** (`application_withdrawal.py`) — Auto-withdraws pending applications when an offer is received. Configurable exclusion list and dry-run mode.
+- **JD Change Tracker** (`jd_change_tracker.py`) — Snapshots job descriptions at apply time and periodically diffs them. Detects salary changes, requirement edits, and description rewrites. Alerts on significant modifications.
+- **ATS Status Scraper** (`status_scraper.py`) — Logs into Greenhouse, Workday, and Lever candidate portals and scrapes real-time application status updates.
+
+**Smart Scheduling & Deduplication**
+- **Apply Scheduler** (`apply_scheduler.py`) — Time-of-day optimized apply queue. Jobs discovered outside the 6-10am peak window are queued and batch-applied for maximum recruiter visibility (3x more views).
+- **Dedup Engine** (`dedup_engine.py`) — Cross-platform duplicate job detection using fuzzy fingerprinting on title + company + location. Prevents redundant applications across LinkedIn, Google Jobs, Indeed, and Glassdoor.
+
+**Recruiter & Referral Tools**
+- **Recruiter CRM** (`recruiter_crm.py`) — Full relationship scoring CRM with interaction history, follow-up reminders, and engagement tracking per recruiter.
+- **Referral Automator** (`referral_automator.py`) — Scans 1st-degree LinkedIn connections at target companies and auto-drafts personalized referral request messages. Daily caps and per-person cooldowns.
+
+**Salary & Negotiation**
+- **Salary Negotiation** (`salary_negotiation.py`) — Auto-generates negotiation briefs with market rate comparisons, anonymized competing offer data, and suggested counter ranges.
+
+**Tracking & Internationalization**
+- **Job Watchlist** (`job_watchlist.py`) — Smart bookmarking with configurable reminders. Auto-checks if watched jobs are still active and alerts on expiry.
+- **Multi-Language Support** (`multi_language.py`) — Detects JD language and translates tailored resume/cover letter into 10 supported languages via AI or DeepL.
+
+**Dashboard Overhaul**
+- **All-in-One Dashboard** (`dashboard.py`) — Complete rewrite as a command center with 9 tabs: Overview, Applications, Recruiters, Salary, Skills, Interview Prep, Watchlist, Analytics, and System. New API endpoints: `/api/skills`, `/api/watchlist`, `/api/salary/top`.
+
+**Database Extensions**
+- 8 new SQLite tables: `dedup_fingerprints`, `jd_snapshots`, `recruiter_interactions`, `recruiter_scores`, `apply_queue`, `negotiation_briefs`, `ats_statuses`, `job_watchlist`
+- Total tables: 21 (up from 13)
+
+**Stats**
+- 44 Python files, 15,282 lines of code, 36 features total
+
+---
+
 ## v2.0.0 — Major Feature Release
 
 ### Added
