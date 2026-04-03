@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interview Prep — LLA</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f5f5; }
+        .nav { background: #0a66c2; padding: 15px 30px; color: white; }
+        .nav h1 { font-size: 1.4em; display: inline; }
+        .nav a { color: white; text-decoration: none; margin-left: 20px; }
+        .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
+        .prep-card { background: white; border-radius: 8px; padding: 20px; margin-bottom: 20px;
+                     box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        .prep-card h3 { color: #0a66c2; margin-bottom: 10px; }
+        .prep-card h4 { color: #555; margin: 15px 0 8px; }
+        .prep-card pre { background: #f8f8f8; padding: 12px; border-radius: 4px;
+                         white-space: pre-wrap; font-size: 0.9em; line-height: 1.5; }
+    </style>
+</head>
+<body>
+    <div class="nav">
+        <h1>LLA</h1>
+        <a href="/">Dashboard</a>
+        <a href="/jobs">Jobs</a>
+        <a href="/recruiters">Recruiters</a>
+        <a href="/salary">Salary</a>
+        <a href="/interview-prep">Interview Prep</a>
+    </div>
+    <div class="container">
+        <h2 style="margin-bottom:15px">Interview Prep ({{ preps|length }} jobs)</h2>
+        {% for p in preps %}
+        <div class="prep-card">
+            <h3>{{ p.title }} @ {{ p.company }}</h3>
+            <small>Generated: {{ p.generated_at[:16] if p.generated_at else '' }}</small>
+            {% if p.company_research %}
+            <h4>Company Research</h4>
+            <pre>{{ p.company_research }}</pre>
+            {% endif %}
+            {% if p.likely_questions %}
+            <h4>Likely Questions</h4>
+            <pre>{{ p.likely_questions }}</pre>
+            {% endif %}
+            {% if p.talking_points %}
+            <h4>Talking Points</h4>
+            <pre>{{ p.talking_points }}</pre>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+</body>
+</html>

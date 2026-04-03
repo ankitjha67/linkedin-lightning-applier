@@ -659,7 +659,8 @@ def get_job_cards(driver) -> list:
             return cards
     log.warning("No job cards found!")
     log.debug(f"  URL: {driver.current_url}")
-    log.debug(f"  Links to /jobs/view/: {len(driver.find_elements(By.CSS_SELECTOR, 'a[href*=\"/jobs/view/\"]'))}")
+    job_links = driver.find_elements(By.CSS_SELECTOR, 'a[href*="/jobs/view/"]')
+    log.debug(f"  Links to /jobs/view/: {len(job_links)}")
     return []
 
 
@@ -1162,3 +1163,123 @@ def _pick_option(sel_el, text):
     for opt in sel.options:
         if opt.text.strip().lower() == "yes":
             sel.select_by_visible_text(opt.text.strip()); return
+
+
+# ═══════════════════════════════════════════════════════════════
+# EXTERNAL APPLY URL DETECTION
+# ═══════════════════════════════════════════════════════════════
+
+def get_external_apply_url(driver) -> str | None:
+    """
+    Find the 'Apply' button that links to an external ATS.
+    Returns the external URL, or None if only Easy Apply is available.
+    """
+    try:
+        # Look for apply buttons that link externally
+        for sel in [
+            'a[class*="apply-button"]',
+            'a[data-control-name*="apply"]',
+            'button[class*="jobs-apply-button"] + a',
+            '.jobs-apply-button--top-card a',
+            'a.jobs-apply-button',
+        ]:
+            els = driver.find_elements(By.CSS_SELECTOR, sel)
+            for el in els:
+                href = el.get_attribute("href") or ""
+                text = el.text.strip().lower()
+                # Skip Easy Apply buttons
+                if "easy" in text:
+                    continue
+                if href and "linkedin.com" not in href and ("apply" in text or "apply" in href.lower()):
+                    return href
+
+        # Also check for "Apply on company website" type buttons
+        for btn in driver.find_elements(By.TAG_NAME, "button"):
+            try:
+                txt = btn.text.strip().lower()
+                if ("apply" in txt and "easy" not in txt and btn.is_displayed()):
+                    # Click and check if it opens a new tab/redirects
+                    onclick = btn.get_attribute("onclick") or ""
+                    data_url = btn.get_attribute("data-apply-url") or ""
+                    if data_url:
+                        return data_url
+            except Exception:
+                continue
+
+    except Exception as e:
+        log.debug(f"External apply URL detection error: {e}")
+
+    return None
+
+
+def send_linkedin_message(driver, profile_url: str, message: str) -> bool:
+    """
+    Navigate to a LinkedIn profile and send a message.
+    Used by RecruiterMessenger for auto-messaging recruiters.
+    """
+    if not profile_url:
+        return False
+
+    try:
+        driver.get(profile_url)
+        time.sleep(random.uniform(3, 5))
+
+        # Find Message button
+        msg_btn = None
+        for sel in [
+            'button[aria-label*="Message"]',
+            'a[aria-label*="Message"]',
+        ]:
+            btns = driver.find_elements(By.CSS_SELECTOR, sel)
+            for btn in btns:
+                if btn.is_displayed() and "message" in (btn.get_attribute("aria-label") or "").lower():
+                    msg_btn = btn
+                    break
+            if msg_btn:
+                break
+
+        if not msg_btn:
+            for btn in driver.find_elements(By.TAG_NAME, "button"):
+                if "message" in btn.text.lower() and btn.is_displayed():
+                    msg_btn = btn
+                    break
+
+        if not msg_btn:
+            return False
+
+        safe_click(driver, msg_btn)
+        time.sleep(random.uniform(2, 4))
+
+        # Find message input
+        msg_input = None
+        for sel in [
+            'div[role="textbox"][contenteditable="true"]',
+            'div.msg-form__contenteditable',
+        ]:
+            inputs = driver.find_elements(By.CSS_SELECTOR, sel)
+            if inputs:
+                msg_input = inputs[-1]
+                break
+
+        if not msg_input:
+            return False
+
+        msg_input.click()
+        time.sleep(0.5)
+        msg_input.send_keys(message)
+        time.sleep(random.uniform(1, 2))
+
+        # Click send
+        for sel in ['button.msg-form__send-button', 'button[type="submit"]']:
+            btns = driver.find_elements(By.CSS_SELECTOR, sel)
+            for btn in btns:
+                if btn.is_displayed() and btn.is_enabled():
+                    btn.click()
+                    time.sleep(2)
+                    return True
+
+        return False
+
+    except Exception as e:
+        log.warning(f"Message send error: {e}")
+        return False

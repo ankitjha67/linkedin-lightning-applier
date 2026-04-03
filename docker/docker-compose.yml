@@ -1,0 +1,24 @@
+version: '3.8'
+
+services:
+  lla:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: linkedin-lightning-applier
+    restart: unless-stopped
+    ports:
+      - "5000:5000"  # Dashboard
+      - "8080:8080"  # Health check
+    volumes:
+      - ../config.yaml:/app/config.yaml:ro
+      - lla-data:/app/data
+      - lla-logs:/app/logs
+    environment:
+      - PYTHONUNBUFFERED=1
+      - TZ=UTC
+    shm_size: '2gb'  # Chrome needs shared memory
+
+volumes:
+  lla-data:
+  lla-logs:
