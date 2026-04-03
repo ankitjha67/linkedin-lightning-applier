@@ -1,0 +1,308 @@
+# ═══════════════════════════════════════════════════════════════
+# LinkedIn Lightning Applier v2 — Config for Ankit Kumar
+# Optimized from CV analysis
+# ═══════════════════════════════════════════════════════════════
+
+linkedin:
+  email: ""                            # ← FILL YOUR EMAIL
+  password: ""                         # ← FILL YOUR PASSWORD
+
+personal:
+  first_name: "Ankit"
+  last_name: "Kumar"
+  full_name: "Ankit Kumar"
+  email: ""
+  phone: "+91 9876543210"
+  city: "Gurugram"
+  state: "Haryana"
+  zip_code: "122001"
+  country: "India"
+  linkedin_headline: "Manager – Financial Services Risk Management @ EY | Basel III/IRB | PD/LGD/EAD | RWA | OFSAA"
+
+# ═══════════════════════════════════════════════════════════════
+# JOB SEARCH
+# ═══════════════════════════════════════════════════════════════
+search:
+  search_terms:
+    # Tier 1 — exact match to your skills
+    - "Credit Risk Manager"
+    - "Risk Management Manager"
+    - "Basel III"
+    - "Credit Risk Analyst"
+    - "IRB Risk"
+    # Tier 2 — adjacent roles
+    - "Regulatory Risk Manager"
+    - "OFSAA Consultant"
+    - "RWA Analyst"
+    - "Capital Adequacy"
+    - "Model Validation Analyst"
+
+  search_locations:
+    # Tier 1 — major finance hubs with visa paths
+    - "London, England, United Kingdom"
+    - "Singapore"
+    - "Toronto, Ontario, Canada"
+    - "Dubai, United Arab Emirates"
+    - "Sydney, New South Wales, Australia"
+    # Tier 2 — India
+    - "Gurugram, Haryana, India"
+    - "Mumbai, Maharashtra, India"
+    - "Bangalore, Karnataka, India"
+    # Tier 3 — other finance hubs
+    - "Hong Kong SAR"
+    - "Frankfurt, Hessen, Germany"
+    - "Abu Dhabi, United Arab Emirates"
+
+  date_posted: "Past hour"
+  sort_by: "Most recent"
+  easy_apply_only: true
+  experience_level: ["Mid-Senior level", "Associate"]
+  job_type: ["Full-time"]
+  work_location: []
+  randomize_order: true
+
+# ═══════════════════════════════════════════════════════════════
+# APPLICATION DEFAULTS
+# ═══════════════════════════════════════════════════════════════
+application:
+  years_of_experience: 7
+  notice_period_days: "30"
+  desired_salary: "Negotiable"
+  current_ctc: "2000000"
+  require_visa: "Yes"
+  authorized_to_work: "Yes"
+  willing_to_relocate: "Yes"
+
+# ═══════════════════════════════════════════════════════════════
+# QUESTION ANSWERS — keyword match (free, instant, always correct)
+# ═══════════════════════════════════════════════════════════════
+question_answers:
+  # Identity
+  "first name": "Ankit"
+  "last name": "Kumar"
+  "full name": "Ankit Kumar"
+  "gender": "Male"
+  "race": "Prefer not to say"
+  "ethnicity": "Prefer not to say"
+  "veteran": "No"
+  "disability": "Prefer not to say"
+  "pronoun": "He/Him"
+  # Contact
+  "email": "your-email@example.com"
+  "phone": "+91 9876543210"
+  "mobile": "+91 9876543210"
+  "city": "Gurugram"
+  "state": "Haryana"
+  "zip": "122001"
+  "postal": "122001"
+  "country": "India"
+  # Links
+  "linkedin": "https://www.linkedin.com/in/yourprofile"
+  "github": "https://github.com/yourhandle"
+  "website": "https://github.com/yourhandle"
+  "how did you hear": "LinkedIn"
+  # Education
+  "school": "IFMR Graduate School of Business, Krea University"
+  "university": "IFMR Graduate School of Business, Krea University"
+  "college": "IFMR Graduate School of Business, Krea University"
+  "degree": "Post Graduate Diploma in Management (Data Science)"
+  "discipline": "Data Science"
+  "major": "Data Science"
+  "field of study": "Data Science"
+  "graduation": "2018"
+  "gpa": "3.5"
+  "highest education": "Post Graduate Diploma"
+  # Experience
+  "years of experience": "7"
+  "total experience": "7"
+  "current company": "Ernst & Young LLP"
+  "current employer": "Ernst & Young LLP"
+  "current role": "Manager - Financial Services Risk Management"
+  "current title": "Manager - Financial Services Risk Management"
+  # Skills
+  "certifications": "Certified ScrumMaster, KPMG Lean Six Sigma Green Belt, IBM SPSS Modeler, BMC Bloomberg"
+  "certification": "Certified ScrumMaster, Lean Six Sigma Green Belt"
+  "skills": "Basel III, IRB, Credit Risk, PD/LGD/EAD, RWA, OFSAA, Python, SQL, Tableau, R, IBM SPSS"
+  "technical skills": "Python, SQL, R, IBM SPSS, Tableau, OFSAA, JIRA, Confluence"
+  "programming": "Python, SQL, R"
+  "python": "5"
+  "sql": "7"
+  "excel": "7"
+  "tableau": "4"
+  "languages": "English, Hindi"
+  # Work preferences
+  "notice period": "30 days"
+  "salary": "Negotiable"
+  "compensation": "Negotiable"
+  "relocate": "Yes"
+  "willing to relocate": "Yes"
+  "remote": "Yes"
+  "travel": "Yes"
+  "start date": "30 days from offer"
+  "availability": "30 days notice"
+  "authorized": "Yes"
+  "sponsorship": "Yes"
+  "visa": "Yes, will require sponsorship"
+  "right to work": "Yes, with sponsorship"
+  # Summary
+  "summary": "Manager in Financial Services Risk Management at EY with 7+ years across Big 4 firms. Basel III/IRB, credit risk modelling (PD/LGD/EAD), RWA computation, OFSAA."
+  "cover letter": "Risk management professional with 7+ years at EY, KPMG and banking. Deep expertise in Basel III/IRB, credit risk transformation, capital adequacy, and regulatory reporting."
+  "about yourself": "7+ years in FSRM across EY, KPMG, and banking. Basel III, IRB, PD/LGD/EAD, RWA, OFSAA."
+  # Common yes/no
+  "background check": "Yes"
+  "drug test": "Yes"
+  "agree": "Yes"
+  "acknowledge": "Yes"
+  "consent": "Yes"
+
+# ═══════════════════════════════════════════════════════════════
+# FILTERING
+# ═══════════════════════════════════════════════════════════════
+filters:
+  bad_words:
+    - "polygraph"
+    - "top secret"
+    - "ts/sci"
+    - "security clearance required"
+    - "registered nurse"
+    - "clinical trial"
+    - "patient care"
+    - "pharmacy technician"
+    - "physician assistant"
+    - "veterinary"
+    - "CPA required"
+    - "CFA required"
+    - "bar admission"
+    - "law degree required"
+    - "JD required"
+    - "medical degree"
+    - "must be a US citizen"
+    - "US citizens only"
+
+  blacklisted_companies:
+    - "Revature"
+
+  bad_title_words:
+    - "Intern"
+    - "Internship"
+    - "Junior"
+    - "Cashier"
+    - "Teller"
+    - "Nurse"
+    - "Physician"
+    - "Teacher"
+    - "Chef"
+    - "Driver"
+    - "Warehouse"
+    - "Receptionist"
+    - "Insurance Agent"
+    - "CFO"
+    - "Chief Financial Officer"
+    - "Chief Risk Officer"
+
+  experience_buffer: 3
+
+  visa_sponsorship_only: false
+
+  visa_positive_keywords:
+    - "visa sponsorship"
+    - "sponsor visa"
+    - "sponsorship available"
+    - "will sponsor"
+    - "H1B"
+    - "H-1B"
+    - "work visa"
+    - "immigration sponsorship"
+    - "Tier 2"
+    - "Skilled Worker visa"
+
+  visa_negative_keywords:
+    - "no sponsorship"
+    - "not sponsor"
+    - "cannot sponsor"
+    - "won't sponsor"
+    - "will not sponsor"
+    - "no visa"
+    - "must be authorized"
+    - "citizens only"
+
+# ═══════════════════════════════════════════════════════════════
+# RESUME
+# ═══════════════════════════════════════════════════════════════
+resume:
+  default_resume_path: ""
+
+# ═══════════════════════════════════════════════════════════════
+# SCHEDULING
+# ═══════════════════════════════════════════════════════════════
+scheduling:
+  scan_interval_minutes: 10
+  max_applies_per_day: 40
+  max_applies_per_cycle: 15
+  active_hours_start: 0
+  active_hours_end: 24
+  min_delay_between_jobs: 3
+  max_delay_between_jobs: 8
+  min_delay_between_searches: 5
+  max_delay_between_searches: 15
+  delay_after_apply: 4
+
+# ═══════════════════════════════════════════════════════════════
+# BROWSER
+# ═══════════════════════════════════════════════════════════════
+browser:
+  headless: false
+  stealth_mode: true
+  chrome_version: 146
+  window_width: 1280
+  window_height: 900
+  user_data_dir: ""
+  follow_company: false
+
+# ═══════════════════════════════════════════════════════════════
+# DATA EXPORT
+# ═══════════════════════════════════════════════════════════════
+export:
+  auto_export_csv: true
+  export_dir: "data"
+  applied_csv: "applied_jobs.csv"
+  skipped_csv: "skipped_jobs.csv"
+  recruiters_csv: "recruiters.csv"
+  visa_sponsors_csv: "visa_sponsors.csv"
+
+# ═══════════════════════════════════════════════════════════════
+# AI — LM Studio primary, Ollama 7B fallback
+# ═══════════════════════════════════════════════════════════════
+ai:
+  enabled: true
+
+  provider: "lmstudio"
+  model: "qwen3.5-9b"
+  base_url: "http://localhost:1234/v1"
+  api_key: ""
+
+  fallback_enabled: true
+  fallback_provider: "ollama"
+  fallback_model: "llama3.1"
+  fallback_base_url: "http://localhost:11434/v1"
+
+  temperature: 0.2
+  max_tokens: 200
+  timeout_seconds: 30
+
+  cv_text: |
+    ANKIT KUMAR — Manager, Financial Services Risk Management, Ernst & Young LLP, Gurugram.
+    EXPERIENCE (7+ years):
+    EY (Aug 2021–Present): Manager FSRM. Led credit-risk transformation — Concentration Risk, Capital Adequacy, RWA. BRDs for UK/EU regulatory platforms. Tableau dashboards. Basel III/IRB training.
+    KPMG (Jan–Jul 2021): Consultant DTI Oracle. Basel III RCA3 for PSU bank. OFSAA validation, SQL testing.
+    Stradegi Solutions (Jun 2020–Jan 2021): Business Analyst. BRDs, functional specs, UI, UAT.
+    Equitas SFB (Apr 2018–Jun 2020): Business Analyst. Predictive modelling (SPSS, 96% accuracy). RBI regulatory analysis, stress testing.
+    EDUCATION: PGDM Data Science (IFMR/Krea 2018), B.Tech Mech Eng (ABIT/BPUT 2015).
+    SKILLS: OFSAA, Basel III, IRB, Credit Risk, PD/LGD/EAD, RWA, Python, SQL, R, Tableau, SPSS, Agile, JIRA.
+    CERTS: ScrumMaster, Lean Six Sigma Green Belt, IBM SPSS, Bloomberg.
+    Open to: UK, Singapore, Canada, UAE, Australia, Hong Kong, Germany.
+
+logging:
+  level: "INFO"
+  log_to_file: true
+  log_dir: "logs"
