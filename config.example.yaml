@@ -454,3 +454,102 @@ proxy:
 # ═══════════════════════════════════════════════════════════════
 docker:
   health_check_port: 8080
+
+# ═══════════════════════════════════════════════════════════════
+# FOLLOW-UP ENGINE — Multi-touch follow-up cadence
+# ═══════════════════════════════════════════════════════════════
+follow_up:
+  enabled: true
+  max_touches: 3                 # Max follow-up messages per recruiter
+  max_follow_ups_per_day: 5
+  skip_if_responded: true        # Skip follow-up if already got a response
+  cadence:
+    - { touch: 2, days: 5, type: "follow_up_1" }
+    - { touch: 3, days: 14, type: "final_follow_up" }
+
+# ═══════════════════════════════════════════════════════════════
+# NETWORK LEVERAGE — Check connections, surface referrals
+# ═══════════════════════════════════════════════════════════════
+network_leverage:
+  enabled: true
+  check_connections: true        # Check for 1st/2nd degree connections at companies
+  send_connection_requests: false # Auto-send connection requests to hiring managers
+  max_requests_per_day: 10
+  request_note_enabled: true     # Include a note with connection requests
+
+# ═══════════════════════════════════════════════════════════════
+# RESUME A/B TESTING — Generate variants, track callbacks
+# ═══════════════════════════════════════════════════════════════
+resume_ab_testing:
+  enabled: true
+  variants_per_job: 2            # Number of variants to generate
+  styles:                        # Resume styles to test
+    - "skills_first"
+    - "achievement_focused"
+    - "narrative"
+
+# ═══════════════════════════════════════════════════════════════
+# COVER LETTER — PDF cover letter generation per job
+# ═══════════════════════════════════════════════════════════════
+cover_letter:
+  enabled: true
+  output_dir: "data/cover_letters"
+  tone: "professional"           # professional, conversational, enthusiastic
+  length: "medium"               # short, medium, full
+
+# ═══════════════════════════════════════════════════════════════
+# SKILL GAP ANALYSIS — Aggregate skills, identify gaps
+# ═══════════════════════════════════════════════════════════════
+skill_gap_analysis:
+  enabled: true
+  auto_extract: true             # Use AI to extract skills from JDs
+
+# ═══════════════════════════════════════════════════════════════
+# COMPANY INTELLIGENCE — Glassdoor ratings, enrichment
+# ═══════════════════════════════════════════════════════════════
+company_intel:
+  enabled: true
+  min_glassdoor_rating: 0        # Skip companies below this rating (0 = disabled)
+  enrich_from_description: true  # Extract company info from JD via AI
+  cache_days: 30
+
+# ═══════════════════════════════════════════════════════════════
+# APPLY TIMING — Prioritize fresh job postings
+# ═══════════════════════════════════════════════════════════════
+apply_timing:
+  enabled: true
+  prioritize_fresh: true         # Reorder job queue by freshness
+  skip_stale: false              # Skip very old postings
+  stale_threshold_hours: 168     # 7 days
+  max_age_hours: 168
+
+# ═══════════════════════════════════════════════════════════════
+# EMAIL MONITOR — Track responses via IMAP
+# ═══════════════════════════════════════════════════════════════
+email_monitor:
+  enabled: false
+  imap_server: ""                # Auto-detected from email domain
+  imap_port: 993
+  email: ""                      # Defaults to personal.email
+  password: ""                   # App password (not your main password)
+  folder: "INBOX"
+  check_last_days: 7
+
+# ═══════════════════════════════════════════════════════════════
+# PROFILE OPTIMIZER — LinkedIn keyword analysis
+# ═══════════════════════════════════════════════════════════════
+profile_optimizer:
+  enabled: true
+  auto_suggest: true
+  min_jobs_for_analysis: 10      # Minimum jobs before generating suggestions
+
+# ═══════════════════════════════════════════════════════════════
+# FINGERPRINT ROTATION — Browser anti-detection
+# ═══════════════════════════════════════════════════════════════
+fingerprint:
+  enabled: false
+  rotate_user_agent: true
+  rotate_resolution: true
+  spoof_webgl: true
+  spoof_canvas: true
+  region: "us"                   # us, uk, eu, india, singapore, uae, canada, australia

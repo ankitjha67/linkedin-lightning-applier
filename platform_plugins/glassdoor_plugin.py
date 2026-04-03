@@ -1,98 +1,342 @@
 """
-Glassdoor Platform Plugin (scaffold).
+Glassdoor Platform Plugin.
 
 Implements the JobPlatform interface for Glassdoor.com.
-To be fully implemented when multi-platform support is activated.
+Glassdoor typically redirects to company ATS for applications,
+so the apply flow delegates to ExternalApplier.
 """
 
 import logging
 import re
 import time
 from typing import Optional
-from urllib.parse import urlencode
+from urllib.parse import urlencode, quote_plus
 
 from .base import JobPlatform
 
 log = logging.getLogger("lla.glassdoor")
 
+SELECTORS = {
+    "job_cards": [
+        "li.react-job-listing",
+        'li[data-test="jobListing"]',
+        "li[data-id]",
+        "ul.job-list li",
+    ],
+    "title": [
+        'a[data-test="job-title"]',
+        "a.jobTitle",
+        'a[class*="jobTitle"]',
+        ".job-title",
+    ],
+    "company": [
+        'span[class*="EmployerProfile"]',
+        ".employer-name",
+        'div[data-test="emp-name"]',
+        'a[data-test="employer-short-name"]',
+    ],
+    "location": [
+        'span[data-test="emp-location"]',
+        ".loc",
+        'span[class*="location"]',
+    ],
+    "salary": [
+        'span[data-test="detailSalary"]',
+        ".salary-estimate",
+        'div[class*="SalaryEstimate"]',
+    ],
+    "description": [
+        "#JobDescriptionContainer",
+        ".desc",
+        'div[class*="jobDescriptionContent"]',
+        'div[data-test="jobDescriptionContent"]',
+        'section[class*="JobDetails"]',
+    ],
+    "apply_button": [
+        'button[data-test="applyButton"]',
+        "button.apply-button",
+        'a[data-test="applyButton"]',
+        "a.applyButton",
+    ],
+}
+
 
 class GlassdoorPlugin(JobPlatform):
-    """Glassdoor job platform implementation (scaffold)."""
+    """Glassdoor job platform implementation."""
 
     @property
     def name(self) -> str:
         return "glassdoor"
+
+    @property
+    def display_name(self) -> str:
+        return "Glassdoor"
+
+    @property
+    def requires_login(self) -> bool:
+        return False  # Search works without login (may hit modal prompts)
+
+    @property
+    def supports_easy_apply(self) -> bool:
+        return False  # Glassdoor always redirects to company ATS
 
     def create_browser(self, cfg: dict):
         from linkedin import create_browser
         return create_browser(cfg)
 
     def login(self, driver, cfg: dict) -> bool:
-        driver.get("https://www.glassdoor.com")
-        time.sleep(3)
-        return True
+        """Navigate to Glassdoor. Login optional (dismiss prompts)."""
+        try:
+            driver.get("https://www.glassdoor.com")
+            time.sleep(3)
+            self._dismiss_popups(driver)
+            return True
+        except Exception as e:
+            log.warning(f"Glassdoor navigation failed: {e}")
+            return False
 
     def build_search_url(self, cfg: dict, term: str, location: str) -> str:
         loc_short = location.split(",")[0].strip()
-        params = {"sc.keyword": term, "locT": "C", "locKeyword": loc_short}
+        # Glassdoor uses a specific URL format
+        term_slug = quote_plus(term)
+        loc_slug = quote_plus(loc_short)
+        params = {
+            "sc.keyword": term,
+            "locT": "C",
+            "locKeyword": loc_short,
+        }
+
+        sc = cfg.get("search", {})
+        dp = sc.get("date_posted", "Past 24 hours")
+        date_map = {
+            "Past 24 hours": "1",
+            "Past week": "7",
+            "Past month": "30",
+        }
+        if dp in date_map:
+            params["fromAge"] = date_map[dp]
+
         return f"https://www.glassdoor.com/Job/jobs.htm?{urlencode(params)}"
 
     def navigate_to_search(self, driver, url: str):
+        log.debug(f"Navigating: {url[:120]}")
         driver.get(url)
         time.sleep(4)
+        self._dismiss_popups(driver)
+
+        from selenium.webdriver.common.by import By
+        from selenium.webdriver.support.ui import WebDriverWait
+        from selenium.webdriver.support import expected_conditions as EC
+        try:
+            WebDriverWait(driver, 10).until(
+                EC.presence_of_element_located((By.CSS_SELECTOR,
+                    ", ".join(SELECTORS["job_cards"][:3])))
+            )
+        except Exception:
+            log.debug("No Glassdoor job cards found after waiting")
 
     def get_job_cards(self, driver) -> list:
         from selenium.webdriver.common.by import By
-        for sel in ['li.react-job-listing', 'li[data-test="jobListing"]',
-                     'ul.job-list li']:
+
+        # Scroll to load content
+        for _ in range(3):
+            driver.execute_script("window.scrollBy(0, 500);")
+            time.sleep(0.5)
+        driver.execute_script("window.scrollTo(0, 0);")
+        time.sleep(0.5)
+
+        for sel in SELECTORS["job_cards"]:
             cards = driver.find_elements(By.CSS_SELECTOR, sel)
             if cards:
+                log.info(f"Found {len(cards)} Glassdoor cards via '{sel}'")
                 return cards
         return []
 
     def extract_job_info(self, driver, card) -> Optional[dict]:
         from selenium.webdriver.common.by import By
+
         try:
-            title_el = card.find_elements(By.CSS_SELECTOR, 'a[class*="jobTitle"], .job-title')
-            company_el = card.find_elements(By.CSS_SELECTOR, '.job-search-key-l2hmii, .employer-name')
-            location_el = card.find_elements(By.CSS_SELECTOR, '.job-search-key-1p8h1nm, .loc')
+            # Title
+            title = ""
+            title_el = None
+            for sel in SELECTORS["title"]:
+                els = card.find_elements(By.CSS_SELECTOR, sel)
+                if els and els[0].text.strip():
+                    title = els[0].text.strip()
+                    title_el = els[0]
+                    break
+            if not title:
+                return None
 
-            title = title_el[0].text.strip() if title_el else ""
-            company = company_el[0].text.strip() if company_el else ""
-            location = location_el[0].text.strip() if location_el else ""
+            # Company
+            company = ""
+            for sel in SELECTORS["company"]:
+                els = card.find_elements(By.CSS_SELECTOR, sel)
+                if els and els[0].text.strip():
+                    company = els[0].text.strip()
+                    break
 
+            # Location
+            location = ""
+            for sel in SELECTORS["location"]:
+                els = card.find_elements(By.CSS_SELECTOR, sel)
+                if els and els[0].text.strip():
+                    location = els[0].text.strip()
+                    break
+
+            # Job ID
             job_id = card.get_attribute("data-id") or ""
             href = ""
-            if title_el and title_el[0].tag_name == "a":
-                href = title_el[0].get_attribute("href") or ""
+            if title_el and title_el.tag_name == "a":
+                href = title_el.get_attribute("href") or ""
             if not job_id and href:
                 m = re.search(r'jobListingId=(\d+)', href)
-                job_id = m.group(1) if m else ""
+                if m:
+                    job_id = m.group(1)
+            if not job_id:
+                import hashlib
+                job_id = hashlib.md5(f"{title}|{company}".encode()).hexdigest()[:12]
+
+            # Salary
+            salary = ""
+            for sel in SELECTORS["salary"]:
+                els = card.find_elements(By.CSS_SELECTOR, sel)
+                if els and els[0].text.strip():
+                    salary = els[0].text.strip()
+                    break
 
             return {
-                "title": title, "company": company, "location": location,
-                "job_id": f"glassdoor_{job_id}", "job_url": href,
-            } if title else None
-        except Exception:
+                "title": title,
+                "company": company,
+                "location": location,
+                "job_id": f"glassdoor_{job_id}",
+                "job_url": href or f"https://www.glassdoor.com/job-listing/?jl={job_id}",
+                "posted_time": "",
+                "applied": False,
+                "salary_info": salary,
+                "work_style": "",
+                "link": title_el,
+            }
+
+        except Exception as e:
+            log.debug(f"Glassdoor card extraction failed: {e}")
             return None
 
     def get_job_description(self, driver) -> str:
         from selenium.webdriver.common.by import By
-        time.sleep(1)
-        for sel in ['#JobDescriptionContainer', '.desc', '[class*="jobDescriptionContent"]']:
+        time.sleep(1.5)
+
+        for sel in SELECTORS["description"]:
             els = driver.find_elements(By.CSS_SELECTOR, sel)
             if els:
                 return els[0].text.strip()
         return ""
 
-    def apply_to_job(self, driver, cfg: dict, ai=None, job_context: dict = None) -> bool:
+    def get_salary_info(self, driver) -> str:
         from selenium.webdriver.common.by import By
-        # Glassdoor typically redirects to company's ATS
-        btns = driver.find_elements(By.CSS_SELECTOR,
-            'button[data-test="applyButton"], a.applyButton, button.apply-button')
-        for btn in btns:
-            if btn.is_displayed():
+
+        for sel in SELECTORS["salary"] + [
+            'div[class*="salary"]',
+            'span[class*="salary"]',
+        ]:
+            els = driver.find_elements(By.CSS_SELECTOR, sel)
+            for el in els:
+                txt = el.text.strip()
+                if any(c in txt for c in ["$", "£", "€", "₹", "K", "salary"]):
+                    return txt
+        return ""
+
+    def apply_to_job(self, driver, cfg: dict, ai=None, job_context: dict = None) -> bool:
+        """
+        Glassdoor always redirects to company ATS.
+        Click the apply button and return False to signal ExternalApplier should handle it.
+        """
+        from selenium.webdriver.common.by import By
+
+        for sel in SELECTORS["apply_button"]:
+            btns = driver.find_elements(By.CSS_SELECTOR, sel)
+            for btn in btns:
+                if btn.is_displayed() and btn.is_enabled():
+                    btn.click()
+                    time.sleep(3)
+                    # Glassdoor always opens external ATS
+                    return False
+
+        # Try any visible "Apply" button
+        for btn in driver.find_elements(By.TAG_NAME, "button"):
+            if "apply" in btn.text.lower() and btn.is_displayed():
                 btn.click()
                 time.sleep(3)
-                return False  # Returns False — ExternalApplier handles the ATS page
+                return False
+
         return False
+
+    def get_external_apply_url(self, driver) -> Optional[str]:
+        """Glassdoor apply buttons usually link to external ATS."""
+        from selenium.webdriver.common.by import By
+
+        for sel in SELECTORS["apply_button"]:
+            els = driver.find_elements(By.CSS_SELECTOR, sel)
+            for el in els:
+                href = el.get_attribute("href") or ""
+                if href and "glassdoor.com" not in href:
+                    return href
+
+        # Check for "Apply on company site" links
+        for a in driver.find_elements(By.TAG_NAME, "a"):
+            href = a.get_attribute("href") or ""
+            text = a.text.lower()
+            if "apply" in text and href and "glassdoor.com" not in href:
+                return href
+
+        return None
+
+    def has_next_page(self, driver) -> bool:
+        from selenium.webdriver.common.by import By
+        nav = driver.find_elements(By.CSS_SELECTOR,
+            'button[data-test="pagination-next"], li.next a, a[aria-label="Next"]')
+        return any(el.is_displayed() for el in nav)
+
+    def go_to_next_page(self, driver) -> bool:
+        from selenium.webdriver.common.by import By
+        try:
+            for sel in ['button[data-test="pagination-next"]', 'li.next a', 'a[aria-label="Next"]']:
+                els = driver.find_elements(By.CSS_SELECTOR, sel)
+                for el in els:
+                    if el.is_displayed():
+                        el.click()
+                        time.sleep(3)
+                        self._dismiss_popups(driver)
+                        return True
+        except Exception:
+            pass
+        return False
+
+    def _dismiss_popups(self, driver):
+        """Dismiss Glassdoor login/signup modals and cookie banners."""
+        from selenium.webdriver.common.by import By
+
+        for sel in [
+            'button.e1r4hxna0',  # Close modal button
+            'button[class*="CloseButton"]',
+            'span.SVGInline.modal_closeIcon',
+            'button[aria-label="Close"]',
+            'div.modal_closeBtn',
+            '#onetrust-accept-btn-handler',
+        ]:
+            try:
+                els = driver.find_elements(By.CSS_SELECTOR, sel)
+                for el in els:
+                    if el.is_displayed():
+                        el.click()
+                        time.sleep(0.5)
+            except Exception:
+                continue
+
+        # Also try pressing Escape to dismiss modals
+        from selenium.webdriver.common.keys import Keys
+        try:
+            driver.find_element(By.TAG_NAME, "body").send_keys(Keys.ESCAPE)
+            time.sleep(0.3)
+        except Exception:
+            pass

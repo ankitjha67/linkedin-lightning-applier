@@ -1,30 +1,54 @@
 # LinkedIn Lightning Applier
 
-Autonomous LinkedIn Easy Apply bot. Scans for new jobs every 10 minutes, applies the moment they appear, tracks recruiters, detects visa sponsorship, answers unknown form questions using local AI — all running 24/7 from your machine.
+Autonomous job application engine. Searches LinkedIn every 10 minutes, applies the moment jobs appear, tailors your resume per job using AI, scores job-candidate fit, messages recruiters, scrapes Google Jobs for cross-platform discovery, fills external ATS forms (Greenhouse, Lever, Workday), tracks everything in SQLite, and serves a real-time monitoring dashboard — all running 24/7.
 
-Built because the difference between "applied 2 minutes after posting" and "applied 24 hours later" is the difference between getting an interview and getting buried in a pile of 500 applicants.
+Built because the difference between "applied 2 minutes after posting" and "applied 24 hours later" is the difference between getting an interview and getting buried under 500 applicants.
 
-## What It Actually Does
+## What It Does
 
-The bot runs in a loop. Every cycle:
+The bot runs in a continuous loop. Every cycle:
 
-1. Searches LinkedIn for jobs matching your terms across all your configured locations
-2. Starts with "Past hour" filter — if nothing found, widens to 2h → 6h → 12h → 24h → week
-3. For each job: clicks the card, reads the full description, extracts hiring team names, checks for visa sponsorship keywords
-4. Filters by blacklisted companies, bad words in descriptions, experience requirements, visa-only mode
-5. Clicks Easy Apply, fills every form field (keyword match first, AI fallback for unknowns), submits
-6. Saves everything to SQLite + auto-exports 4 CSV files every cycle
-7. Sleeps with random jitter, then repeats
+1. **Discovers jobs** — Searches LinkedIn across all your configured terms and locations. Optionally scrapes Google Jobs for cross-platform coverage (Indeed, Glassdoor, company sites).
+2. **Scores every job** — AI compares the job description against your CV and scores the match 0-100%. Jobs below your threshold (e.g. 70%) are skipped automatically.
+3. **Tailors your resume** — For jobs above the threshold, AI generates a custom PDF resume emphasizing the skills that match this specific job description.
+4. **Applies** — Clicks Easy Apply (LinkedIn) or fills external ATS forms (Greenhouse, Lever, Workday, Ashby). Keyword matching handles 90% of form fields for free; AI fills the rest.
+5. **Messages recruiters** — After applying, queues a personalized LinkedIn message to the hiring manager with a configurable delay (e.g. 2 hours).
+6. **Generates interview prep** — Company research, likely interview questions, and talking points mapped to the JD — saved per job.
+7. **Tracks everything** — Applied/skipped/failed jobs, recruiter directory, visa sponsors, salary benchmarks, match scores, response tracking with ML prediction.
+8. **Sends alerts** — Telegram, Discord, or Slack notifications on every application, errors, and daily summaries.
+9. **Simulates human activity** — Between cycles, scrolls the LinkedIn feed, likes posts, views profiles to keep the account looking natural.
+10. **Exports data** — Auto-exports 7 CSV files and serves a live web dashboard.
 
 ## Features
 
-**Core engine:** Multi-location cycling, adaptive time filter widening, cross-search deduplication, "no results" detection (ignores LinkedIn's suggested/recommended jobs when your filter returns nothing).
+### Tier 1 — Core Engine
+- **AI Match Scoring** — Scores jobs 0-100% before applying. Trained logistic regression predicts response probability.
+- **AI Resume Tailoring** — Generates custom PDF/DOCX resumes per job using your master CV + the JD. Uploads automatically.
+- **Auto Recruiter Messaging** — AI-generated personalized messages sent via LinkedIn messaging with configurable delay.
+- **External ATS Apply** — Fills Greenhouse, Lever, Workday, and Ashby application forms using AI.
+- **Google Jobs Scraping** — Discovers jobs across all platforms via Google Jobs. LinkedIn-linked results processed directly; ATS results handed to the external applier.
 
-**AI form filling:** 8 LLM providers supported. Keyword match handles 90% of questions for free. AI handles the rest using your CV as context. Answers are cached in SQLite — same question never hits the API twice. Supports primary + fallback provider chain (e.g. LM Studio primary, Ollama fallback).
+### Tier 2 — Intelligence & Monitoring
+- **Real-time Dashboard** — Flask web dashboard at `http://localhost:5000` with live stats, application funnel, recruiter directory, visa sponsor list.
+- **Telegram/Discord/Slack Alerts** — Instant notifications per application. Daily summary at configurable time. Error alerts.
+- **LinkedIn Activity Simulation** — Scroll feed, like posts, view profiles between apply cycles. Configurable action count.
+- **Salary Intelligence** — Parses salary data from every job (supports USD, GBP, EUR, INR LPA, and more). Builds benchmarks by role and location.
+- **Interview Prep Generator** — Company research, 8-10 likely questions, talking points mapped to requirements. Saved per job in the database.
+- **Success Tracking** — Logistic regression trained on your data. Correlates response rates with match score, recruiter messaging, resume tailoring, visa status, day of week.
+- **Smart Scheduling** — Learns optimal scan times from posting patterns. Prioritizes fast-hiring companies. Wilson score ranking for search terms.
 
-**Tracking:** Every applied/skipped/failed job logged with full details. Recruiter names and titles extracted from "Meet the hiring team" section. Visa sponsorship positive/negative detection. Daily stats.
+### Tier 3 — Scale & Platform
+- **Multi-Platform Plugins** — Abstract `JobPlatform` interface with LinkedIn, Indeed, and Glassdoor implementations. Extensible to any platform.
+- **Proxy Rotation** — Health-scored proxy rotation with exponential backoff, sticky sessions, and auto-banning. Persists proxy health to disk.
+- **Docker Deployment** — Dockerfile with headless Chrome, docker-compose with volume mounts, health check endpoint.
+- **SaaS Web App** — Flask app with authentication, CSRF protection, job search, salary benchmarks, interview prep viewer.
 
-**Ban prevention:** undetected-chromedriver, daily/cycle caps, randomized delays, active hours, cycle jitter, human-like scrolling.
+### Core Foundations
+- **AI Form Filling** — 8 LLM providers: OpenAI, Anthropic Claude, Google Gemini, DeepSeek, Groq, Together, Ollama (local), LM Studio (local). Answers cached in SQLite.
+- **Recruiter Tracking** — Names, titles, and LinkedIn URLs from "Meet the hiring team" sections.
+- **Visa Detection** — Positive/negative keyword matching for sponsorship signals.
+- **Ban Prevention** — undetected-chromedriver, daily/cycle caps, randomized delays, active hours, human-like scrolling.
+- **Hot-Reload Config** — Edit `config.yaml` while running; changes apply next cycle.
 
 ## Quick Start
 
@@ -41,24 +65,36 @@ nano config.yaml   # Fill email, password, search terms, personal info
 python main.py
 ```
 
-## Requirements
+### Requirements
 
-- Python 3.10+ (tested on 3.12 and 3.14)
+- Python 3.10+
 - Google Chrome (stable channel)
 - `pip install -r requirements.txt`
 
-For AI form filling (optional but recommended):
-- [Ollama](https://ollama.ai) with any model (`ollama pull llama3.1`)
-- OR [LM Studio](https://lmstudio.ai) with any model loaded
+For AI features (match scoring, resume tailoring, form filling):
+- [Ollama](https://ollama.ai) with any model (`ollama pull llama3.1`) — free, local
+- OR [LM Studio](https://lmstudio.ai) — free, local
 - OR any OpenAI-compatible API (OpenAI, Anthropic, Gemini, DeepSeek, Groq, Together)
+
+For the dashboard: Flask is included in requirements.txt. Dashboard runs at `http://localhost:5000` by default.
+
+### Docker Deployment
+
+```bash
+# Build and run with Docker Compose
+cp config.yaml docker/  # Place your config
+cd docker
+docker-compose up -d
+
+# Dashboard available at http://localhost:5000
+# Health check at http://localhost:8080/health
+```
 
 ## Configuration
 
-All settings live in `config.yaml`. The bot hot-reloads this file every cycle — edit while running, changes apply next scan.
+All settings live in `config.yaml` (gitignored). Copy `config.example.yaml` and fill in your details. The bot hot-reloads config every cycle.
 
-**`config.example.yaml`** is the template. Copy it to `config.yaml` and fill in your details. `config.yaml` is gitignored (contains credentials).
-
-Key sections:
+### Essential Settings
 
 ```yaml
 linkedin:
@@ -66,43 +102,107 @@ linkedin:
   password: "your-password"
 
 search:
-  search_terms: ["Credit Risk Manager", "Basel III", "Risk Analyst"]
-  search_locations: ["London, England, United Kingdom", "Singapore", "Toronto, Ontario, Canada"]
-  date_posted: "Past hour"          # Widens automatically if no results
+  search_terms: ["Software Engineer", "Backend Developer"]
+  search_locations: ["London, United Kingdom", "New York, NY"]
+  date_posted: "Past hour"    # Widens automatically if no results
 
 ai:
   enabled: true
-  provider: "ollama"                # or lmstudio, openai, anthropic, gemini, etc.
-  fallback_provider: "ollama"
-  fallback_model: "llama3.1"
-
-browser:
-  user_data_dir: "C:/Users/YOU/chrome-lla-profile"  # Saves cookies — login once, skip forever
+  provider: "ollama"           # or lmstudio, openai, anthropic, gemini, deepseek, groq, together
+  model: "llama3.1"
+  cv_text: |
+    YOUR CV TEXT HERE...
 ```
+
+### Feature Toggles
+
+Every feature has an `enabled: true/false` flag. All are independent and degrade gracefully:
+
+```yaml
+match_scoring:
+  enabled: true
+  minimum_score: 70            # Skip jobs below this match %
+
+resume_tailoring:
+  enabled: true
+  output_dir: "data/tailored_resumes"
+  format: "pdf"                # pdf, docx, or txt
+
+recruiter_messaging:
+  enabled: true
+  delay_minutes: 120           # Wait 2 hours after applying
+  max_messages_per_day: 10
+
+external_apply:
+  enabled: true
+  supported_ats: ["greenhouse", "lever", "workday", "ashby"]
+
+google_jobs:
+  enabled: true
+  country_code: "uk"
+  date_posted: "today"
+
+dashboard:
+  enabled: true
+  port: 5000
+
+alerts:
+  enabled: false
+  telegram: { enabled: false, bot_token: "", chat_id: "" }
+  discord: { enabled: false, webhook_url: "" }
+  slack: { enabled: false, webhook_url: "" }
+
+activity_simulation:
+  enabled: true
+  actions_per_cycle: 5
+```
+
+See `config.example.yaml` for the complete reference with all options documented.
 
 ## Output
 
 The `data/` folder (auto-created) contains:
 
-| File | What's in it |
+| File | Contents |
 |---|---|
-| `applied_jobs.csv` | Every job applied to — title, company, salary, recruiter, visa status, timestamp |
-| `skipped_jobs.csv` | Every skipped job with reason |
-| `recruiters.csv` | Hiring team members — name, title, company, LinkedIn URL |
+| `applied_jobs.csv` | Every application — title, company, salary, recruiter, visa, match score, resume version |
+| `skipped_jobs.csv` | Every skipped job with reason and match score |
+| `recruiters.csv` | Hiring team — name, title, company, LinkedIn URL |
 | `visa_sponsors.csv` | Companies confirmed to sponsor visas |
+| `match_scores.csv` | AI match scores with skill matches and gaps |
+| `salary_data.csv` | Parsed salary data with min/max/currency |
+| `interview_prep.csv` | Company research, likely questions, talking points |
 | `state.db` | SQLite database (all of the above, queryable) |
+| `tailored_resumes/` | AI-generated custom resumes per job (PDF/DOCX) |
+| `logs/` | Daily log files |
 
 ## Architecture
 
 ```
-config.yaml     ← All settings (hot-reloadable)
-main.py         ← Orchestrator: scheduling, filtering, rate limiting
-linkedin.py     ← Browser: login, search, card scrolling, Easy Apply flow
-ai.py           ← Multi-provider LLM: answer questions, cover letters
-state.py        ← SQLite: jobs, recruiters, visa sponsors, answer cache, CSV export
+main.py                 Orchestrator — scheduling, filtering, feature integration
+linkedin.py             Browser — login, search, Easy Apply, recruiter messaging
+ai.py                   Multi-provider LLM — answers, cover letters, skill extraction
+state.py                SQLite — 13 tables, migrations, CSV export
+
+match_scorer.py         AI match scoring engine (0-100%)
+resume_tailor.py        AI resume generation — PDF/DOCX/TXT output
+recruiter_messenger.py  Message queue with scheduled delivery
+google_jobs_scraper.py  Google Jobs scraping — Selenium, SerpAPI, or requests
+external_apply.py       ATS form filling — Greenhouse, Lever, Workday, Ashby
+activity_sim.py         Human behavior simulation — feed, likes, profile views
+alerts.py               Telegram / Discord / Slack notifications
+dashboard.py            Flask real-time dashboard with dark theme
+salary_intel.py         Salary parsing and benchmarking (10+ currency formats)
+interview_prep.py       Company research + questions + talking points
+success_tracker.py      ML prediction — logistic regression on 9 features
+smart_scheduler.py      Learned scan times, Wilson score term ranking
+proxy_manager.py        Health-scored proxy rotation with failover
+platform_plugins/       Multi-platform abstraction (LinkedIn, Indeed, Glassdoor)
+webapp/                 SaaS web app with auth, CSRF, search, API
+docker/                 Dockerfile, docker-compose, health check
 ```
 
-2,400 lines across 4 modules.
+8,700+ lines across 24 Python modules.
 
 ## AI Providers
 
@@ -117,11 +217,37 @@ state.py        ← SQLite: jobs, recruiters, visa sponsors, answer cache, CSV e
 | Anthropic | ~$0.003/question | console.anthropic.com |
 | Together | ~$0.0005/question | together.ai |
 
-Set `provider` and `fallback_provider` in config. The bot tries keyword matching first (free, instant), then primary AI, then fallback AI.
+Set `provider` and `fallback_provider` in config. The bot tries: keyword matching (free) -> primary AI -> fallback AI.
+
+## Dashboard
+
+The real-time dashboard runs at `http://localhost:5000` when `dashboard.enabled: true`.
+
+Shows: application stats, daily counts, application funnel (processed -> applied -> responses), recent applications table with match scores, recruiter directory, visa sponsor list. Auto-refreshes every 30 seconds. Responsive design works on mobile.
+
+## Web App
+
+A full SaaS-style web app is available at `webapp/app.py`:
+
+```bash
+python webapp/app.py
+# Runs at http://localhost:8080
+# Default credentials: admin / changeme
+```
+
+Features: login with session auth, CSRF protection, paginated job browser with search, recruiter directory, salary benchmarks, interview prep viewer, REST API endpoints, health check.
+
+## Contributing
+
+1. Fork the repo
+2. Create a feature branch (`git checkout -b feature/amazing`)
+3. Make your changes
+4. Ensure all files pass `python -c "import ast; ast.parse(open('file.py').read())"`
+5. Submit a PR
 
 ## Inspired By
 
-[GodsScion/Auto_job_applier_linkedIn](https://github.com/GodsScion/Auto_job_applier_linkedIn) — the original Python Selenium bot with 1.9K+ stars. This project takes the core idea and rebuilds it with a single YAML config, multi-provider AI, recruiter tracking, visa detection, adaptive time filters, and virtual-scroll-aware card handling.
+[GodsScion/Auto_job_applier_linkedIn](https://github.com/GodsScion/Auto_job_applier_linkedIn) — the original Python Selenium bot with 1.9K+ stars. This project takes the core idea and rebuilds it with AI resume tailoring, match scoring, multi-platform support, recruiter messaging, Google Jobs scraping, real-time dashboard, and ML-powered success prediction.
 
 ## License
 
