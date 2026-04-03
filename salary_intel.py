@@ -106,9 +106,12 @@ class SalaryIntel:
 
         # Handle LPA (Lakhs Per Annum)
         if not numbers:
-            lpa_matches = re.findall(r'(\d+(?:\.\d+)?)\s*(?:LPA|lpa|lakhs?)', clean)
+            lpa_matches = re.findall(r'(\d+(?:\.\d+)?)\s*(?:[-–to\s]+(\d+(?:\.\d+)?)\s*)?(?:LPA|lpa|lakhs?)', clean)
             if lpa_matches:
-                numbers = [float(n) * 100000 for n in lpa_matches]
+                for match in lpa_matches:
+                    numbers.append(float(match[0]) * 100000)
+                    if match[1]:
+                        numbers.append(float(match[1]) * 100000)
 
         # Handle plain numbers
         if not numbers:
