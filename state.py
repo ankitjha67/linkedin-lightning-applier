@@ -196,6 +196,91 @@ class State:
                 filled          INTEGER DEFAULT 0,
                 PRIMARY KEY (company, title_pattern)
             );
+
+            -- Follow-Up Cadence
+            CREATE TABLE IF NOT EXISTS follow_up_queue (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                job_id          TEXT,
+                recruiter_name  TEXT,
+                profile_url     TEXT,
+                company         TEXT,
+                job_title       TEXT,
+                touch_number    INTEGER DEFAULT 1,
+                message_text    TEXT,
+                scheduled_at    TEXT,
+                sent_at         TEXT,
+                status          TEXT DEFAULT 'pending',
+                created_at      TEXT DEFAULT (datetime('now','localtime'))
+            );
+
+            -- Company Connections (Network Leverage)
+            CREATE TABLE IF NOT EXISTS company_connections (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                company         TEXT,
+                connection_name TEXT,
+                connection_title TEXT DEFAULT '',
+                connection_url  TEXT DEFAULT '',
+                degree          INTEGER DEFAULT 0,
+                job_id          TEXT DEFAULT '',
+                discovered_at   TEXT DEFAULT (datetime('now','localtime')),
+                referral_requested INTEGER DEFAULT 0
+            );
+
+            -- Resume Variants (A/B Testing)
+            CREATE TABLE IF NOT EXISTS resume_variants (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                job_id          TEXT,
+                variant_name    TEXT,
+                variant_style   TEXT DEFAULT '',
+                file_path       TEXT DEFAULT '',
+                was_used        INTEGER DEFAULT 0,
+                got_response    INTEGER DEFAULT 0,
+                response_type   TEXT DEFAULT '',
+                created_at      TEXT DEFAULT (datetime('now','localtime'))
+            );
+
+            -- Skill Frequency (Gap Analysis)
+            CREATE TABLE IF NOT EXISTS skill_frequency (
+                skill           TEXT PRIMARY KEY,
+                times_seen      INTEGER DEFAULT 1,
+                times_matched   INTEGER DEFAULT 0,
+                last_seen       TEXT DEFAULT (datetime('now','localtime'))
+            );
+
+            -- Company Intelligence
+            CREATE TABLE IF NOT EXISTS company_intel (
+                company         TEXT PRIMARY KEY,
+                glassdoor_rating REAL DEFAULT 0,
+                company_size    TEXT DEFAULT '',
+                industry        TEXT DEFAULT '',
+                funding_stage   TEXT DEFAULT '',
+                headquarters    TEXT DEFAULT '',
+                description     TEXT DEFAULT '',
+                enriched_at     TEXT DEFAULT (datetime('now','localtime'))
+            );
+
+            -- Email Responses
+            CREATE TABLE IF NOT EXISTS email_responses (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                job_id          TEXT DEFAULT '',
+                company         TEXT DEFAULT '',
+                sender          TEXT DEFAULT '',
+                subject         TEXT DEFAULT '',
+                response_type   TEXT DEFAULT '',
+                received_at     TEXT DEFAULT '',
+                processed_at    TEXT DEFAULT (datetime('now','localtime')),
+                body_snippet    TEXT DEFAULT ''
+            );
+
+            -- Profile Optimization Suggestions
+            CREATE TABLE IF NOT EXISTS profile_suggestions (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                section         TEXT DEFAULT '',
+                suggestion      TEXT DEFAULT '',
+                keyword         TEXT DEFAULT '',
+                frequency       INTEGER DEFAULT 0,
+                generated_at    TEXT DEFAULT (datetime('now','localtime'))
+            );
         """)
         self.conn.commit()
 
@@ -506,6 +591,163 @@ class State:
             WHERE filled=1 AND days_active <= ? AND days_active > 0
             ORDER BY days_active ASC
         """, (max_days,)).fetchall()
+        return [dict(r) for r in rows]
+
+    # ── Follow-Up Queue ────────────────────────────────────────
+    def queue_follow_up(self, job_id: str, recruiter_name: str, profile_url: str,
+                        company: str, job_title: str, message_text: str,
+                        scheduled_at: str, touch_number: int = 1):
+        self.conn.execute("""
+            INSERT INTO follow_up_queue
+            (job_id, recruiter_name, profile_url, company, job_title,
+             touch_number, message_text, scheduled_at)
+            VALUES (?,?,?,?,?,?,?,?)
+        """, (job_id, recruiter_name, profile_url, company, job_title,
+              touch_number, message_text, scheduled_at))
+        self.conn.commit()
+
+    def get_pending_follow_ups(self) -> list[dict]:
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        rows = self.conn.execute("""
+            SELECT * FROM follow_up_queue
+            WHERE status='pending' AND scheduled_at <= ?
+            ORDER BY scheduled_at ASC
+        """, (now,)).fetchall()
+        return [dict(r) for r in rows]
+
+    def update_follow_up_status(self, fu_id: int, status: str):
+        self.conn.execute("""
+            UPDATE follow_up_queue SET status=?, sent_at=datetime('now','localtime')
+            WHERE id=?
+        """, (status, fu_id))
+        self.conn.commit()
+
+    def get_follow_up_count(self, job_id: str) -> int:
+        row = self.conn.execute(
+            "SELECT MAX(touch_number) as mx FROM follow_up_queue WHERE job_id=? AND status='sent'",
+            (job_id,)
+        ).fetchone()
+        return row["mx"] if row and row["mx"] else 0
+
+    # ── Company Connections ───────────────────────────────────
+    def save_company_connection(self, company: str, name: str, title: str = "",
+                                url: str = "", degree: int = 0, job_id: str = ""):
+        self.conn.execute("""
+            INSERT OR IGNORE INTO company_connections
+            (company, connection_name, connection_title, connection_url, degree, job_id)
+            VALUES (?,?,?,?,?,?)
+        """, (company, name, title, url, degree, job_id))
+        self.conn.commit()
+
+    def get_company_connections(self, company: str) -> list[dict]:
+        rows = self.conn.execute(
+            "SELECT * FROM company_connections WHERE company=? ORDER BY degree ASC",
+            (company,)
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    # ── Resume Variants ───────────────────────────────────────
+    def save_resume_variant(self, job_id: str, variant_name: str, variant_style: str,
+                            file_path: str, was_used: bool = False):
+        self.conn.execute("""
+            INSERT INTO resume_variants
+            (job_id, variant_name, variant_style, file_path, was_used)
+            VALUES (?,?,?,?,?)
+        """, (job_id, variant_name, variant_style, file_path, 1 if was_used else 0))
+        self.conn.commit()
+
+    def get_variant_performance(self) -> list[dict]:
+        rows = self.conn.execute("""
+            SELECT variant_style, COUNT(*) as total_used,
+                   SUM(got_response) as responses,
+                   ROUND(SUM(got_response) * 100.0 / COUNT(*), 1) as response_rate
+            FROM resume_variants WHERE was_used=1
+            GROUP BY variant_style ORDER BY response_rate DESC
+        """).fetchall()
+        return [dict(r) for r in rows]
+
+    # ── Skill Frequency ───────────────────────────────────────
+    def increment_skill(self, skill: str, matched: bool = False):
+        existing = self.conn.execute(
+            "SELECT times_seen FROM skill_frequency WHERE skill=?", (skill,)
+        ).fetchone()
+        if existing:
+            if matched:
+                self.conn.execute(
+                    "UPDATE skill_frequency SET times_seen=times_seen+1, times_matched=times_matched+1, last_seen=datetime('now','localtime') WHERE skill=?",
+                    (skill,))
+            else:
+                self.conn.execute(
+                    "UPDATE skill_frequency SET times_seen=times_seen+1, last_seen=datetime('now','localtime') WHERE skill=?",
+                    (skill,))
+        else:
+            self.conn.execute(
+                "INSERT INTO skill_frequency (skill, times_seen, times_matched) VALUES (?,1,?)",
+                (skill, 1 if matched else 0))
+        self.conn.commit()
+
+    def get_skill_gaps(self, limit: int = 20) -> list[dict]:
+        rows = self.conn.execute("""
+            SELECT skill, times_seen, times_matched,
+                   ROUND((times_seen - times_matched) * 100.0 / times_seen, 1) as gap_pct
+            FROM skill_frequency
+            WHERE times_seen >= 3 AND times_matched < times_seen
+            ORDER BY (times_seen - times_matched) DESC LIMIT ?
+        """, (limit,)).fetchall()
+        return [dict(r) for r in rows]
+
+    def get_top_skills(self, limit: int = 30) -> list[dict]:
+        rows = self.conn.execute("""
+            SELECT skill, times_seen, times_matched
+            FROM skill_frequency ORDER BY times_seen DESC LIMIT ?
+        """, (limit,)).fetchall()
+        return [dict(r) for r in rows]
+
+    # ── Company Intelligence ──────────────────────────────────
+    def save_company_intel(self, company: str, glassdoor_rating: float = 0,
+                           company_size: str = "", industry: str = "",
+                           funding_stage: str = "", headquarters: str = "",
+                           description: str = ""):
+        self.conn.execute("""
+            INSERT OR REPLACE INTO company_intel
+            (company, glassdoor_rating, company_size, industry, funding_stage,
+             headquarters, description)
+            VALUES (?,?,?,?,?,?,?)
+        """, (company, glassdoor_rating, company_size, industry, funding_stage,
+              headquarters, description))
+        self.conn.commit()
+
+    def get_company_intel(self, company: str) -> dict | None:
+        row = self.conn.execute(
+            "SELECT * FROM company_intel WHERE company=?", (company,)
+        ).fetchone()
+        return dict(row) if row else None
+
+    # ── Email Responses ───────────────────────────────────────
+    def save_email_response(self, company: str = "", sender: str = "",
+                            subject: str = "", response_type: str = "",
+                            received_at: str = "", body_snippet: str = "",
+                            job_id: str = ""):
+        self.conn.execute("""
+            INSERT INTO email_responses
+            (job_id, company, sender, subject, response_type, received_at, body_snippet)
+            VALUES (?,?,?,?,?,?,?)
+        """, (job_id, company, sender, subject, response_type, received_at, body_snippet[:500]))
+        self.conn.commit()
+
+    # ── Profile Suggestions ───────────────────────────────────
+    def save_profile_suggestion(self, section: str, suggestion: str,
+                                keyword: str = "", frequency: int = 0):
+        self.conn.execute("""
+            INSERT INTO profile_suggestions (section, suggestion, keyword, frequency)
+            VALUES (?,?,?,?)
+        """, (section, suggestion, keyword, frequency))
+        self.conn.commit()
+
+    def get_profile_suggestions(self) -> list[dict]:
+        rows = self.conn.execute(
+            "SELECT * FROM profile_suggestions ORDER BY frequency DESC"
+        ).fetchall()
         return [dict(r) for r in rows]
 
     # ── Daily Stats ───────────────────────────────────────────

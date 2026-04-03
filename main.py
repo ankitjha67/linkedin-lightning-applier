@@ -103,6 +103,56 @@ try:
 except ImportError:
     SuccessTracker = None
 
+try:
+    from follow_up_engine import FollowUpEngine
+except ImportError:
+    FollowUpEngine = None
+
+try:
+    from network_leverage import NetworkLeverage
+except ImportError:
+    NetworkLeverage = None
+
+try:
+    from resume_ab_testing import ResumeABTester
+except ImportError:
+    ResumeABTester = None
+
+try:
+    from cover_letter_gen import CoverLetterGenerator
+except ImportError:
+    CoverLetterGenerator = None
+
+try:
+    from skill_gap_analysis import SkillGapAnalyzer
+except ImportError:
+    SkillGapAnalyzer = None
+
+try:
+    from company_intel import CompanyIntel
+except ImportError:
+    CompanyIntel = None
+
+try:
+    from apply_timing import ApplyTimingOptimizer
+except ImportError:
+    ApplyTimingOptimizer = None
+
+try:
+    from email_monitor import EmailMonitor
+except ImportError:
+    EmailMonitor = None
+
+try:
+    from profile_optimizer import ProfileOptimizer
+except ImportError:
+    ProfileOptimizer = None
+
+try:
+    from fingerprint_rotator import FingerprintRotator
+except ImportError:
+    FingerprintRotator = None
+
 
 # ===================================================================
 shutdown_requested = False
@@ -698,6 +748,16 @@ def run_forever(config_path: str):
     scheduler = SmartScheduler(state, cfg) if SmartScheduler else None
     google_scraper = GoogleJobsScraper(cfg, state) if GoogleJobsScraper else None
     dash = Dashboard(state, cfg) if Dashboard else None
+    follow_up = FollowUpEngine(ai_answerer, cfg, state) if FollowUpEngine else None
+    network = NetworkLeverage(cfg, state) if NetworkLeverage else None
+    ab_tester = ResumeABTester(ai_answerer, cfg, state) if ResumeABTester else None
+    cover_gen = CoverLetterGenerator(ai_answerer, cfg) if CoverLetterGenerator else None
+    skill_analyzer = SkillGapAnalyzer(ai_answerer, cfg, state) if SkillGapAnalyzer else None
+    company_enricher = CompanyIntel(ai_answerer, cfg, state) if CompanyIntel else None
+    timing_opt = ApplyTimingOptimizer(cfg) if ApplyTimingOptimizer else None
+    email_mon = EmailMonitor(cfg, state) if EmailMonitor else None
+    profile_opt = ProfileOptimizer(ai_answerer, cfg, state) if ProfileOptimizer else None
+    fp_rotator = FingerprintRotator(cfg) if FingerprintRotator else None
 
     # Log enabled features
     features = []
@@ -711,6 +771,15 @@ def run_forever(config_path: str):
     if scheduler and scheduler.enabled: features.append("Smart Scheduling")
     if google_scraper and google_scraper.enabled: features.append("Google Jobs Scraping")
     if cfg.get("activity_simulation", {}).get("enabled"): features.append("Activity Simulation")
+    if follow_up and follow_up.enabled: features.append("Follow-Up Engine")
+    if network and network.enabled: features.append("Network Leverage")
+    if ab_tester and ab_tester.enabled: features.append("Resume A/B Testing")
+    if cover_gen and cover_gen.enabled: features.append("Cover Letter Gen")
+    if skill_analyzer and skill_analyzer.enabled: features.append("Skill Gap Analysis")
+    if company_enricher and company_enricher.enabled: features.append("Company Intel")
+    if timing_opt and timing_opt.enabled: features.append("Apply Timing")
+    if email_mon and email_mon.enabled: features.append("Email Monitor")
+    if profile_opt and profile_opt.enabled: features.append("Profile Optimizer")
     if dash and dash.enabled: features.append(f"Dashboard (:{dash.port})")
     if features:
         log.info(f"🚀 Features: {', '.join(features)}")
@@ -828,6 +897,20 @@ def run_forever(config_path: str):
                 messenger.process_queue(driver)
             except Exception as e:
                 log.debug(f"Message queue error: {e}")
+
+        # Process follow-up queue
+        if follow_up and follow_up.enabled:
+            try:
+                follow_up.process_follow_ups(driver)
+            except Exception as e:
+                log.debug(f"Follow-up queue error: {e}")
+
+        # Check email for responses
+        if email_mon and email_mon.enabled:
+            try:
+                email_mon.check_inbox()
+            except Exception as e:
+                log.debug(f"Email monitor error: {e}")
 
         # Check daily summary
         if alert_mgr:
