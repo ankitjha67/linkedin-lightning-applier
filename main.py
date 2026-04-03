@@ -568,7 +568,10 @@ def run_cycle(drv, cfg: dict, st: State, ai=None,
         log.error("No search terms or locations!")
         return
 
-    if sc.get("randomize_order", True):
+    if scheduler and scheduler.enabled:
+        scheduler.invalidate_caches()
+        terms = scheduler.optimize_search_order(terms)
+    elif sc.get("randomize_order", True):
         random.shuffle(terms)
 
     cycle_seen_ids = set()

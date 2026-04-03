@@ -178,7 +178,7 @@ The `data/` folder (auto-created) contains:
 
 ## Architecture
 
-```
+```text
 main.py                 Orchestrator — scheduling, filtering, feature integration
 linkedin.py             Browser — login, search, Easy Apply, recruiter messaging
 ai.py                   Multi-provider LLM — answers, cover letters, skill extraction
@@ -232,7 +232,10 @@ A full SaaS-style web app is available at `webapp/app.py`:
 ```bash
 python webapp/app.py
 # Runs at http://localhost:8080
-# Default credentials: admin / changeme
+# IMPORTANT: Change the default password before exposing to any network.
+# Set credentials via environment variables:
+#   export LLA_USERNAME="your-username"
+#   export LLA_PASSWORD_HASH=$(python3 -c "import hashlib; print(hashlib.sha256(b'your-password').hexdigest())")
 ```
 
 Features: login with session auth, CSRF protection, paginated job browser with search, recruiter directory, salary benchmarks, interview prep viewer, REST API endpoints, health check.
@@ -242,7 +245,7 @@ Features: login with session auth, CSRF protection, paginated job browser with s
 1. Fork the repo
 2. Create a feature branch (`git checkout -b feature/amazing`)
 3. Make your changes
-4. Ensure all files pass `python -c "import ast; ast.parse(open('file.py').read())"`
+4. Ensure all files pass syntax check: `python -c "import ast, glob, sys; [ast.parse(open(f).read()) for f in glob.glob('**/*.py', recursive=True)]; print('OK')" || exit 1`
 5. Submit a PR
 
 ## Inspired By

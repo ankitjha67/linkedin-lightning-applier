@@ -11,7 +11,7 @@ import logging
 import os
 import random
 import time
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Optional
 
@@ -212,29 +212,58 @@ class ProxyManager:
 
         proxy = self.get_next_proxy()
         if proxy:
-            # Handle authenticated proxies: user:pass@host:port
             if "@" in proxy:
-                # For authenticated proxies, need a Chrome extension
-                log.info(f"Using authenticated proxy: {proxy.split('@')[1]}")
-                chrome_options.add_argument(f"--proxy-server={proxy}")
-            else:
-                chrome_options.add_argument(f"--proxy-server={proxy}")
-            log.info(f"Using proxy: {proxy} (score: {self._health.get(proxy, ProxyHealth()).score:.2f})")
+                # Chrome's --proxy-server does not support user:pass authentication.
+                # Authenticated proxies require a Chrome extension or upstream proxy.
+                log.warning(f"Skipping authenticated proxy (Chrome --proxy-server "
+                           f"does not support credentials): {self._redact_proxy(proxy)}")
+                return
+            chrome_options.add_argument(f"--proxy-server={proxy}")
+            log.info(f"Using proxy: {self._redact_proxy(proxy)} "
+                    f"(score: {self._health.get(proxy, ProxyHealth()).score:.2f})")
+
+    @staticmethod
+    def _redact_proxy(proxy: str) -> str:
+        """Redact credentials from proxy URL for safe logging."""
+        if "@" in proxy:
+            # "http://user:pass@host:port" -> "http://***@host:port"
+            scheme_end = proxy.find("://")
+            if scheme_end >= 0:
+                at_pos = proxy.index("@")
+                return proxy[:scheme_end + 3] + "***@" + proxy[at_pos + 1:]
+            return "***@" + proxy.split("@")[1]
+        return proxy
 
     def validate_proxy(self, proxy: str, timeout: int = 10) -> bool:
         """Test if a proxy is working by making a request."""
         try:
             import requests
+        except ImportError:
+            log.error("requests package required for proxy validation")
+            return False
+
+        # Check SOCKS proxy dependency
+        if proxy.startswith("socks"):
+            try:
+                import socks  # noqa: F401 — PySocks
+            except ImportError:
+                log.error(f"SOCKS proxy requires PySocks: pip install requests[socks]")
+                return False
+
+        try:
             proxies = {"http": proxy, "https": proxy}
             start = time.time()
             resp = requests.get("https://httpbin.org/ip", proxies=proxies, timeout=timeout)
             latency = (time.time() - start) * 1000
             if resp.status_code == 200:
-                self._health[proxy].record_success(latency)
+                if proxy in self._health:
+                    self._health[proxy].record_success(latency)
                 return True
-        except Exception:
-            pass
-        self._health[proxy].record_failure()
+        except Exception as e:
+            log.debug(f"Proxy validation failed for {self._redact_proxy(proxy)}: {e}")
+
+        if proxy in self._health:
+            self._health[proxy].record_failure()
         return False
 
     def validate_all(self) -> dict:

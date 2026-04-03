@@ -14,6 +14,7 @@ import logging
 import math
 from collections import defaultdict
 from datetime import datetime, date
+from typing import Optional
 
 log = logging.getLogger("lla.success_tracker")
 
@@ -23,7 +24,7 @@ RESPONSE_TYPES = ("callback", "interview", "rejection", "offer", "ghosted")
 class SuccessTracker:
     """Track, analyze, and predict application success using learned models."""
 
-    def __init__(self, state, cfg: dict = None):
+    def __init__(self, state, cfg: Optional[dict] = None):
         self.state = state
         self.cfg = cfg or {}
         st_cfg = self.cfg.get("success_tracking", {})
@@ -155,26 +156,34 @@ class SuccessTracker:
                 "response_rate": round(rate, 1)
             }
 
-        # 3. Tailored vs generic resume
-        for has_resume, label in [("has", "tailored"), ("none", "generic")]:
-            if has_resume == "has":
-                cond = "resume_version != '' AND resume_version IS NOT NULL"
-            else:
-                cond = "(resume_version = '' OR resume_version IS NULL)"
-            applied = self.state.conn.execute(
-                f"SELECT COUNT(*) as c FROM applied_jobs WHERE {cond}"
-            ).fetchone()["c"]
-            positive = self.state.conn.execute(f"""
-                SELECT COUNT(*) as c FROM response_tracking r
-                JOIN applied_jobs a ON r.job_id = a.job_id
-                WHERE {cond.replace('resume_version', 'a.resume_version')}
-                  AND r.response_type IN ('callback', 'interview', 'offer')
-            """).fetchone()["c"]
-            rate = (positive / max(applied, 1) * 100)
-            results[f"resume_{label}"] = {
-                "applied": applied, "positive_responses": positive,
-                "response_rate": round(rate, 1)
-            }
+        # 3. Tailored vs generic resume (explicit queries, no f-string SQL)
+        tailored_applied = self.state.conn.execute(
+            "SELECT COUNT(*) as c FROM applied_jobs WHERE resume_version != '' AND resume_version IS NOT NULL"
+        ).fetchone()["c"]
+        tailored_positive = self.state.conn.execute("""
+            SELECT COUNT(*) as c FROM response_tracking r
+            JOIN applied_jobs a ON r.job_id = a.job_id
+            WHERE a.resume_version != '' AND a.resume_version IS NOT NULL
+              AND r.response_type IN ('callback', 'interview', 'offer')
+        """).fetchone()["c"]
+        results["resume_tailored"] = {
+            "applied": tailored_applied, "positive_responses": tailored_positive,
+            "response_rate": round(tailored_positive / max(tailored_applied, 1) * 100, 1)
+        }
+
+        generic_applied = self.state.conn.execute(
+            "SELECT COUNT(*) as c FROM applied_jobs WHERE resume_version = '' OR resume_version IS NULL"
+        ).fetchone()["c"]
+        generic_positive = self.state.conn.execute("""
+            SELECT COUNT(*) as c FROM response_tracking r
+            JOIN applied_jobs a ON r.job_id = a.job_id
+            WHERE (a.resume_version = '' OR a.resume_version IS NULL)
+              AND r.response_type IN ('callback', 'interview', 'offer')
+        """).fetchone()["c"]
+        results["resume_generic"] = {
+            "applied": generic_applied, "positive_responses": generic_positive,
+            "response_rate": round(generic_positive / max(generic_applied, 1) * 100, 1)
+        }
 
         # 4. Visa sponsorship impact
         for visa, label in [("yes", "visa_yes"), ("no", "visa_no"), ("unknown", "visa_unknown")]:
@@ -237,7 +246,7 @@ class SuccessTracker:
     def _build_feature_vector(self, match_score: int, recruiter_messaged: bool,
                                has_tailored_resume: bool = False,
                                visa_status: str = "unknown",
-                               day_of_week: int = None) -> list[float]:
+                               day_of_week: Optional[int] = None) -> list[float]:
         """Build feature vector for prediction."""
         if day_of_week is None:
             day_of_week = datetime.now().weekday()
@@ -353,8 +362,8 @@ class SuccessTracker:
         if self._model_stale or self._weights is None:
             try:
                 self._train_model()
-            except Exception as e:
-                log.debug(f"Model training failed: {e}")
+            except (ValueError, TypeError, ArithmeticError, KeyError) as e:
+                log.warning(f"Model training failed: {e}", exc_info=True)
                 # Fallback heuristic
                 base = 0.12
                 base *= 1 + (match_score - 50) / 100
