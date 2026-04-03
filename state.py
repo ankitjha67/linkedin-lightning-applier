@@ -281,6 +281,142 @@ class State:
                 frequency       INTEGER DEFAULT 0,
                 generated_at    TEXT DEFAULT (datetime('now','localtime'))
             );
+
+            -- Application Withdrawal
+            CREATE TABLE IF NOT EXISTS withdrawal_queue (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                job_id          TEXT,
+                company         TEXT,
+                title           TEXT,
+                reason          TEXT DEFAULT '',
+                status          TEXT DEFAULT 'pending',
+                scheduled_at    TEXT,
+                withdrawn_at    TEXT,
+                created_at      TEXT DEFAULT (datetime('now','localtime'))
+            );
+
+            -- Duplicate Detection
+            CREATE TABLE IF NOT EXISTS job_fingerprints (
+                fingerprint     TEXT PRIMARY KEY,
+                job_id          TEXT,
+                platform        TEXT DEFAULT 'linkedin',
+                title           TEXT,
+                company         TEXT,
+                location        TEXT,
+                first_seen      TEXT DEFAULT (datetime('now','localtime')),
+                times_seen      INTEGER DEFAULT 1
+            );
+
+            -- JD Change Tracking
+            CREATE TABLE IF NOT EXISTS jd_snapshots (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                job_id          TEXT,
+                snapshot_hash   TEXT,
+                description     TEXT,
+                salary_info     TEXT DEFAULT '',
+                captured_at     TEXT DEFAULT (datetime('now','localtime'))
+            );
+
+            CREATE TABLE IF NOT EXISTS jd_changes (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                job_id          TEXT,
+                title           TEXT,
+                company         TEXT,
+                change_type     TEXT DEFAULT '',
+                old_value       TEXT DEFAULT '',
+                new_value       TEXT DEFAULT '',
+                detected_at     TEXT DEFAULT (datetime('now','localtime'))
+            );
+
+            -- Recruiter CRM
+            CREATE TABLE IF NOT EXISTS recruiter_interactions (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                recruiter_name  TEXT,
+                company         TEXT,
+                interaction_type TEXT DEFAULT '',
+                job_id          TEXT DEFAULT '',
+                notes           TEXT DEFAULT '',
+                occurred_at     TEXT DEFAULT (datetime('now','localtime'))
+            );
+
+            CREATE TABLE IF NOT EXISTS recruiter_scores (
+                recruiter_name  TEXT,
+                company         TEXT,
+                relationship_score REAL DEFAULT 0,
+                interactions    INTEGER DEFAULT 0,
+                responses       INTEGER DEFAULT 0,
+                last_interaction TEXT DEFAULT '',
+                PRIMARY KEY (recruiter_name, company)
+            );
+
+            -- Apply Scheduler Queue
+            CREATE TABLE IF NOT EXISTS apply_schedule (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                job_id          TEXT,
+                title           TEXT,
+                company         TEXT,
+                location        TEXT,
+                job_url         TEXT DEFAULT '',
+                optimal_time    TEXT,
+                timezone        TEXT DEFAULT 'UTC',
+                status          TEXT DEFAULT 'queued',
+                created_at      TEXT DEFAULT (datetime('now','localtime'))
+            );
+
+            -- Salary Negotiation
+            CREATE TABLE IF NOT EXISTS negotiation_briefs (
+                job_id          TEXT PRIMARY KEY,
+                company         TEXT,
+                title           TEXT,
+                market_rate     TEXT DEFAULT '',
+                company_range   TEXT DEFAULT '',
+                leverage_points TEXT DEFAULT '',
+                counter_offer   TEXT DEFAULT '',
+                generated_at    TEXT DEFAULT (datetime('now','localtime'))
+            );
+
+            -- ATS Status Tracking
+            CREATE TABLE IF NOT EXISTS ats_status (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                job_id          TEXT,
+                company         TEXT,
+                title           TEXT,
+                portal_url      TEXT DEFAULT '',
+                current_status  TEXT DEFAULT '',
+                previous_status TEXT DEFAULT '',
+                last_checked    TEXT DEFAULT (datetime('now','localtime')),
+                UNIQUE(job_id, portal_url)
+            );
+
+            -- Job Watchlist
+            CREATE TABLE IF NOT EXISTS job_watchlist (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                job_id          TEXT,
+                title           TEXT,
+                company         TEXT,
+                location        TEXT,
+                job_url         TEXT DEFAULT '',
+                match_score     INTEGER DEFAULT 0,
+                reason          TEXT DEFAULT '',
+                remind_at       TEXT DEFAULT '',
+                status          TEXT DEFAULT 'active',
+                still_active    INTEGER DEFAULT 1,
+                added_at        TEXT DEFAULT (datetime('now','localtime'))
+            );
+
+            -- Referral Requests
+            CREATE TABLE IF NOT EXISTS referral_requests (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                job_id          TEXT,
+                company         TEXT,
+                job_title       TEXT,
+                connection_name TEXT,
+                connection_url  TEXT DEFAULT '',
+                message_text    TEXT DEFAULT '',
+                status          TEXT DEFAULT 'draft',
+                sent_at         TEXT,
+                created_at      TEXT DEFAULT (datetime('now','localtime'))
+            );
         """)
         self.conn.commit()
 

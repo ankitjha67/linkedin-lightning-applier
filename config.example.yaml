@@ -553,3 +553,93 @@ fingerprint:
   spoof_webgl: true
   spoof_canvas: true
   region: "us"                   # us, uk, eu, india, singapore, uae, canada, australia
+
+# ═══════════════════════════════════════════════════════════════
+# APPLICATION WITHDRAWAL — Auto-withdraw when you get an offer
+# ═══════════════════════════════════════════════════════════════
+application_withdrawal:
+  enabled: true
+  auto_withdraw_on_offer: true   # Withdraw all pending apps when offer received
+  max_withdrawals_per_day: 10
+
+# ═══════════════════════════════════════════════════════════════
+# DUPLICATE DETECTION — Cross-platform dedup
+# ═══════════════════════════════════════════════════════════════
+dedup:
+  enabled: true
+  fuzzy_threshold: 0.85          # Similarity threshold for fuzzy matching
+
+# ═══════════════════════════════════════════════════════════════
+# JD CHANGE TRACKING — Detect job description edits
+# ═══════════════════════════════════════════════════════════════
+jd_tracking:
+  enabled: true
+  check_interval_hours: 24       # How often to re-check applied job descriptions
+  alert_on_change: true
+
+# ═══════════════════════════════════════════════════════════════
+# RECRUITER CRM — Relationship scoring and tracking
+# ═══════════════════════════════════════════════════════════════
+recruiter_crm:
+  enabled: true
+  auto_log_interactions: true    # Automatically log applies, messages, follow-ups
+  prioritize_warm_contacts: true
+
+# ═══════════════════════════════════════════════════════════════
+# APPLY SCHEDULER — Time-of-day optimized application queue
+# ═══════════════════════════════════════════════════════════════
+apply_scheduler:
+  enabled: false                 # Disabled by default (applies immediately by default)
+  optimal_hours: [7, 8, 9, 10]  # Best hours to submit (local time of job location)
+  timezone_detection: true
+  queue_max_age_hours: 48        # Expire queued jobs after this
+
+# ═══════════════════════════════════════════════════════════════
+# SALARY NEGOTIATION — Auto-generate negotiation briefs
+# ═══════════════════════════════════════════════════════════════
+salary_negotiation:
+  enabled: true
+  auto_generate_on_interview: true  # Generate brief when interview detected
+  current_salary: ""             # Your current salary for leverage calculations
+
+# ═══════════════════════════════════════════════════════════════
+# ATS STATUS SCRAPER — Check application portal statuses
+# ═══════════════════════════════════════════════════════════════
+ats_status_scraper:
+  enabled: true
+  check_interval_hours: 48       # How often to re-check ATS portals
+  max_checks_per_cycle: 5
+
+# ═══════════════════════════════════════════════════════════════
+# JOB WATCHLIST — Bookmark jobs for later
+# ═══════════════════════════════════════════════════════════════
+job_watchlist:
+  enabled: true
+  default_remind_days: 3         # Default reminder interval
+  auto_expire_inactive: true     # Mark closed listings as expired
+
+# ═══════════════════════════════════════════════════════════════
+# REFERRAL AUTOMATOR — Auto-draft referral request messages
+# ═══════════════════════════════════════════════════════════════
+referral_automator:
+  enabled: true
+  auto_send: false               # If true, sends automatically; if false, drafts only
+  max_requests_per_day: 5
+
+# ═══════════════════════════════════════════════════════════════
+# MULTI-LANGUAGE — Resume/cover letter translation
+# ═══════════════════════════════════════════════════════════════
+multi_language:
+  enabled: true
+  auto_detect: true              # Auto-detect JD language
+  supported_languages:
+    - "english"
+    - "german"
+    - "french"
+    - "spanish"
+    - "portuguese"
+    - "dutch"
+    - "arabic"
+    - "hindi"
+    - "japanese"
+    - "mandarin"

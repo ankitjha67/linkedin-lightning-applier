@@ -2,7 +2,21 @@
 
 ## Dashboard API (port 5000)
 
-The real-time dashboard (`dashboard.py`) exposes JSON API endpoints. No authentication required (intended for internal/LAN access).
+The all-in-one dashboard (`dashboard.py`) serves a 9-tab command center and exposes JSON API endpoints. No authentication required (intended for internal/LAN access).
+
+### Dashboard Tabs
+
+| Tab | Description |
+|-----|-------------|
+| **Overview** | Stat cards, application funnel, daily trend chart, match score distribution |
+| **Applications** | Full application table with search, sort, filter by status/score/date |
+| **Recruiters** | Recruiter CRM view with relationship scores, interaction history, follow-up queue |
+| **Salary** | Salary benchmarks by role/location, top offers, negotiation brief viewer |
+| **Skills** | Skill gap analysis — most-requested skills vs. your match rate, learning priorities |
+| **Interview Prep** | Per-job prep materials: company research, likely questions, talking points |
+| **Watchlist** | Bookmarked jobs with active/expired status, next reminder, quick-apply action |
+| **Analytics** | Response rate analysis, success prediction, time-to-response trends, A/B metrics |
+| **System** | Config viewer, proxy health, ATS scraper status, scheduler queue, log tail |
 
 ### GET /health
 
@@ -94,6 +108,59 @@ Application funnel statistics.
   "failed": 45,
   "responses": 28
 }
+```
+
+### GET /api/skills
+
+Skill gap analysis across all applied jobs.
+
+```json
+{
+  "top_required": [
+    {"skill": "Python", "count": 145, "match_rate": 0.95},
+    {"skill": "AWS", "count": 98, "match_rate": 0.72},
+    {"skill": "Kubernetes", "count": 67, "match_rate": 0.45}
+  ],
+  "top_gaps": [
+    {"skill": "Terraform", "count": 52, "match_rate": 0.12},
+    {"skill": "Go", "count": 41, "match_rate": 0.08}
+  ]
+}
+```
+
+### GET /api/watchlist?status=active
+
+Job watchlist entries. Filter by `status`: `active`, `expired`, `all` (default: `active`).
+
+```json
+[
+  {
+    "job_id": "3945619876",
+    "title": "Staff Engineer",
+    "company": "Stripe",
+    "added_at": "2026-03-28 14:30:00",
+    "is_active": true,
+    "last_checked": "2026-04-03 06:00:00",
+    "next_reminder": "2026-04-04 14:30:00"
+  }
+]
+```
+
+### GET /api/salary/top?limit=10
+
+Top salary ranges across all collected data, ranked by max salary.
+
+```json
+[
+  {
+    "title": "Staff Engineer",
+    "company": "Netflix",
+    "location": "Remote, US",
+    "salary_min": 350000,
+    "salary_max": 500000,
+    "currency": "USD"
+  }
+]
 ```
 
 ### GET /api/daily?days=30

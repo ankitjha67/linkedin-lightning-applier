@@ -29,13 +29,23 @@ The bot runs in a continuous loop. Every cycle:
 - **Google Jobs Scraping** — Discovers jobs across all platforms via Google Jobs. LinkedIn-linked results processed directly; ATS results handed to the external applier.
 
 ### Tier 2 — Intelligence & Monitoring
-- **Real-time Dashboard** — Flask web dashboard at `http://localhost:5000` with live stats, application funnel, recruiter directory, visa sponsor list.
+- **All-in-One Dashboard** — Complete command center with 9 tabs (Overview, Applications, Recruiters, Salary, Skills, Interview Prep, Watchlist, Analytics, System). Flask web app at `http://localhost:5000`.
 - **Telegram/Discord/Slack Alerts** — Instant notifications per application. Daily summary at configurable time. Error alerts.
 - **LinkedIn Activity Simulation** — Scroll feed, like posts, view profiles between apply cycles. Configurable action count.
 - **Salary Intelligence** — Parses salary data from every job (supports USD, GBP, EUR, INR LPA, and more). Builds benchmarks by role and location.
 - **Interview Prep Generator** — Company research, 8-10 likely questions, talking points mapped to requirements. Saved per job in the database.
 - **Success Tracking** — Logistic regression trained on your data. Correlates response rates with match score, recruiter messaging, resume tailoring, visa status, day of week.
 - **Smart Scheduling** — Learns optimal scan times from posting patterns. Prioritizes fast-hiring companies. Wilson score ranking for search terms.
+- **Application Withdrawal** — Auto-withdraws pending applications when an offer is received. Keeps your pipeline clean.
+- **Dedup Engine** — Cross-platform duplicate job detection via fuzzy fingerprinting. Prevents applying to the same job twice across LinkedIn, Indeed, and Google Jobs.
+- **JD Change Tracker** — Monitors job descriptions after applying for edits (salary changes, requirement changes). Alerts on significant modifications.
+- **Recruiter CRM** — Relationship scoring CRM with full interaction history, follow-up reminders, and engagement tracking per recruiter.
+- **Apply Scheduler** — Time-of-day optimized apply queue. Studies show 6-10am applications get 3x more views; the scheduler batches accordingly.
+- **Salary Negotiation** — Auto-generates negotiation briefs with market rate data, competing offer context, and suggested counter ranges.
+- **ATS Status Scraper** — Scrapes Greenhouse, Workday, and Lever applicant portals for real-time application status updates.
+- **Job Watchlist** — Smart bookmarking with reminders. Auto-checks if bookmarked jobs are still active and alerts on changes.
+- **Referral Automator** — Auto-drafts referral request messages for 1st-degree LinkedIn connections at target companies.
+- **Multi-Language Support** — Detects JD language and translates resume/cover letter into 10 supported languages.
 
 ### Tier 3 — Scale & Platform
 - **Multi-Platform Plugins** — Abstract `JobPlatform` interface with LinkedIn, Indeed, and Glassdoor implementations. Extensible to any platform.
@@ -198,11 +208,21 @@ success_tracker.py      ML prediction — logistic regression on 9 features
 smart_scheduler.py      Learned scan times, Wilson score term ranking
 proxy_manager.py        Health-scored proxy rotation with failover
 platform_plugins/       Multi-platform abstraction (LinkedIn, Indeed, Glassdoor)
+application_withdrawal.py  Auto-withdraw pending apps on offer received
+dedup_engine.py         Cross-platform duplicate detection via fuzzy fingerprinting
+jd_change_tracker.py    Tracks JD edits after applying (salary, requirements)
+recruiter_crm.py        Recruiter relationship scoring CRM with interaction history
+apply_scheduler.py      Time-of-day optimized apply queue (6-10am = 3x views)
+salary_negotiation.py   Negotiation briefs with market rate data
+status_scraper.py       Scrapes ATS portals for application status updates
+job_watchlist.py        Smart bookmarking with reminders and activity checks
+referral_automator.py   Auto-drafts referral request messages for connections
+multi_language.py       JD language detection + resume/cover letter translation
 webapp/                 SaaS web app with auth, CSRF, search, API
 docker/                 Dockerfile, docker-compose, health check
 ```
 
-8,700+ lines across 24 Python modules.
+15,282 lines across 44 Python files and 36 features.
 
 ## AI Providers
 
@@ -223,7 +243,7 @@ Set `provider` and `fallback_provider` in config. The bot tries: keyword matchin
 
 The real-time dashboard runs at `http://localhost:5000` when `dashboard.enabled: true`.
 
-Shows: application stats, daily counts, application funnel (processed -> applied -> responses), recent applications table with match scores, recruiter directory, visa sponsor list. Auto-refreshes every 30 seconds. Responsive design works on mobile.
+Completely rewritten as an all-in-one command center with 9 tabs: Overview, Applications, Recruiters, Salary, Skills, Interview Prep, Watchlist, Analytics, and System. Each tab provides dedicated views with filtering, sorting, and drill-down. Auto-refreshes every 30 seconds. Responsive design works on mobile.
 
 ## Web App
 
