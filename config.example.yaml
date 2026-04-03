@@ -8,9 +8,9 @@ linkedin:
   password: ""                         # ← FILL YOUR PASSWORD
 
 personal:
-  first_name: "Ankit"
-  last_name: "Kumar"
-  full_name: "Ankit Kumar"
+  first_name: "John"
+  last_name: "Doe"
+  full_name: "John Doe"
   email: ""
   phone: "+91 9876543210"
   city: "Gurugram"
@@ -78,9 +78,9 @@ application:
 # ═══════════════════════════════════════════════════════════════
 question_answers:
   # Identity
-  "first name": "Ankit"
-  "last name": "Kumar"
-  "full name": "Ankit Kumar"
+  "first name": "John"
+  "last name": "Doe"
+  "full name": "John Doe"
   "gender": "Male"
   "race": "Prefer not to say"
   "ethnicity": "Prefer not to say"
