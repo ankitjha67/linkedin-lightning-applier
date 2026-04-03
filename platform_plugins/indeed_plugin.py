@@ -213,10 +213,12 @@ class IndeedPlugin(JobPlatform):
                     if m:
                         job_id = m.group(1)
                         break
+            is_real_jk = bool(job_id)
             if not job_id:
-                # Generate from title hash
+                # Composite hash fallback — include company+location for uniqueness
                 import hashlib
-                job_id = hashlib.md5(title.encode()).hexdigest()[:12]
+                composite = f"{title}|{company}|{location}"
+                job_id = hashlib.md5(composite.encode()).hexdigest()[:12]
 
             # Company
             company = ""
@@ -270,8 +272,8 @@ class IndeedPlugin(JobPlatform):
                 "company": company,
                 "location": location,
                 "work_style": work_style,
-                "job_id": f"indeed_{job_id}",
-                "job_url": f"https://www.indeed.com/viewjob?jk={job_id}",
+                "job_id": f"indeed_{job_id}" if is_real_jk else f"indeed_hash_{job_id}",
+                "job_url": f"https://www.indeed.com/viewjob?jk={job_id}" if is_real_jk else "",
                 "posted_time": posted_time,
                 "applied": applied,
                 "salary_info": salary,
@@ -351,17 +353,25 @@ class IndeedPlugin(JobPlatform):
         from selenium.webdriver.common.by import By
         nav = driver.find_elements(By.CSS_SELECTOR,
             'a[data-testid="pagination-page-next"], a[aria-label="Next Page"]')
-        return len(nav) > 0
+        for el in nav:
+            if el.is_displayed() and self._is_element_enabled(el):
+                return True
+        return False
 
     def go_to_next_page(self, driver) -> bool:
         from selenium.webdriver.common.by import By
         try:
+            old_url = driver.current_url
             nav = driver.find_elements(By.CSS_SELECTOR,
                 'a[data-testid="pagination-page-next"], a[aria-label="Next Page"]')
-            if nav:
-                nav[0].click()
-                time.sleep(3)
-                return True
+            for el in nav:
+                if el.is_displayed() and self._is_element_enabled(el):
+                    el.click()
+                    time.sleep(3)
+                    # Verify navigation actually occurred
+                    if driver.current_url != old_url:
+                        return True
+                    return False
         except Exception:
             pass
         return False
@@ -516,8 +526,10 @@ class IndeedPlugin(JobPlatform):
                     except Exception:
                         continue
 
-            # Submit or Continue
-            submitted = False
+            # Submit or Continue — only terminal submits return True
+            TERMINAL = ("submit your application", "submit")
+            INTERMEDIATE = ("apply", "continue", "next")
+            advanced = False
             for btn_text in ["Submit your application", "Submit", "Apply", "Continue", "Next"]:
                 btns = driver.find_elements(By.XPATH,
                     f'//button[contains(text(), "{btn_text}")] | '
@@ -526,15 +538,24 @@ class IndeedPlugin(JobPlatform):
                     if btn.is_displayed() and btn.is_enabled():
                         btn.click()
                         time.sleep(2)
-                        if btn_text.lower() in ("submit your application", "submit", "apply"):
-                            log.info("   Indeed application submitted!")
+                        if btn_text.lower() in TERMINAL:
+                            # Verify submission success (confirmation page/element)
+                            confirmation = driver.find_elements(By.XPATH,
+                                '//*[contains(text(), "submitted") or contains(text(), "received") '
+                                'or contains(text(), "thank you") or contains(text(), "confirmation")]')
+                            if confirmation or "applied" in driver.current_url.lower():
+                                log.info("   Indeed application submitted!")
+                                return True
+                            # No confirmation found but terminal button was clicked
+                            log.info("   Indeed application submitted (unconfirmed)")
                             return True
-                        submitted = True
+                        # Intermediate button — just advance the wizard
+                        advanced = True
                         break
-                if submitted:
+                if advanced:
                     break
 
-            if not submitted:
+            if not advanced:
                 log.debug(f"Indeed form page {page}: no actionable button found")
                 break
 
@@ -605,3 +626,17 @@ class IndeedPlugin(JobPlatform):
             if k.lower() in l:
                 return str(v)
         return ""
+
+    @staticmethod
+    def _is_element_enabled(el) -> bool:
+        """Check if an element is truly enabled/actionable."""
+        if el.get_attribute("aria-disabled") == "true":
+            return False
+        if el.get_attribute("disabled") is not None:
+            return False
+        classes = el.get_attribute("class") or ""
+        if "disabled" in classes.lower():
+            return False
+        if el.get_attribute("tabindex") == "-1":
+            return False
+        return True

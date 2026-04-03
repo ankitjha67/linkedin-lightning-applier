@@ -191,12 +191,14 @@ class JobPlatform(ABC):
             return "unknown"
         desc_lower = description.lower()
         filters = cfg.get("filters", {})
-        for kw in filters.get("visa_positive_keywords", []):
-            if kw.lower() in desc_lower:
-                return "yes"
+        # Check negative keywords FIRST — "no visa sponsorship" contains
+        # "visa sponsorship", so negative must take priority
         for kw in filters.get("visa_negative_keywords", []):
             if kw.lower() in desc_lower:
                 return "no"
+        for kw in filters.get("visa_positive_keywords", []):
+            if kw.lower() in desc_lower:
+                return "yes"
         return "unknown"
 
     def get_external_apply_url(self, driver) -> Optional[str]:

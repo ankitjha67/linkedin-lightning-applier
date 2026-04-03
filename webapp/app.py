@@ -39,12 +39,24 @@ def create_webapp(db_path: str = "data/state.db", secret_key: str = None):
     AUTH_ENABLED = os.environ.get("LLA_AUTH_ENABLED", "true").lower() == "true"
     AUTH_USERNAME = os.environ.get("LLA_USERNAME", "admin")
     AUTH_PASSWORD_HASH = os.environ.get("LLA_PASSWORD_HASH", "")
-    # If no hash set, use default password "changeme" (SHA-256)
-    if not AUTH_PASSWORD_HASH:
-        AUTH_PASSWORD_HASH = hashlib.sha256("changeme".encode()).hexdigest()
+    if AUTH_ENABLED and not AUTH_PASSWORD_HASH:
+        log.error(
+            "AUTH REQUIRED: Set LLA_PASSWORD_HASH environment variable.\n"
+            "  Generate one with: python3 -c \"import hashlib; "
+            "print(hashlib.sha256(b'your-password').hexdigest())\"\n"
+            "  Or disable auth: LLA_AUTH_ENABLED=false"
+        )
+        import sys
+        sys.exit(1)
 
     def _hash_password(password: str) -> str:
         return hashlib.sha256(password.encode()).hexdigest()
+
+    def _is_api_request() -> bool:
+        """Check if the current request is an API call (JSON or /api/ path)."""
+        return (request.is_json or
+                request.path.startswith("/api/") or
+                "application/json" in (request.accept_mimetypes or ""))
 
     def login_required(f):
         @functools.wraps(f)
@@ -52,7 +64,7 @@ def create_webapp(db_path: str = "data/state.db", secret_key: str = None):
             if not AUTH_ENABLED:
                 return f(*args, **kwargs)
             if not session.get("authenticated"):
-                if request.is_json or request.path.startswith("/api/"):
+                if _is_api_request():
                     abort(401)
                 return redirect(url_for("login_page"))
             return f(*args, **kwargs)
@@ -102,24 +114,25 @@ def create_webapp(db_path: str = "data/state.db", secret_key: str = None):
     # ── Error Handlers ────────────────────────────────────────
     @app.errorhandler(401)
     def unauthorized(e):
-        if request.is_json:
+        if _is_api_request():
             return jsonify({"error": "Unauthorized"}), 401
         return redirect(url_for("login_page"))
 
     @app.errorhandler(403)
     def forbidden(e):
-        return jsonify({"error": "Forbidden — CSRF token invalid"}) if request.is_json \
-            else "Forbidden", 403
+        return (jsonify({"error": "Forbidden — CSRF token invalid"}), 403) \
+            if _is_api_request() else ("Forbidden", 403)
 
     @app.errorhandler(404)
     def not_found(e):
-        return jsonify({"error": "Not found"}) if request.is_json else "Not found", 404
+        return (jsonify({"error": "Not found"}), 404) \
+            if _is_api_request() else ("Not found", 404)
 
     @app.errorhandler(500)
     def server_error(e):
         log.error(f"Server error: {e}")
-        return jsonify({"error": "Internal server error"}) if request.is_json \
-            else "Internal server error", 500
+        return (jsonify({"error": "Internal server error"}), 500) \
+            if _is_api_request() else ("Internal server error", 500)
 
     # ── Auth Routes ───────────────────────────────────────────
     @app.route("/login", methods=["GET", "POST"])
@@ -313,16 +326,29 @@ button:hover {{ background: #004182; }}
             rows = db.execute(query, params).fetchall()
             if not rows:
                 return jsonify({"count": 0})
-            mins = sorted([r["salary_min"] for r in rows if r["salary_min"] > 0])
-            maxs = sorted([r["salary_max"] for r in rows if r["salary_max"] > 0])
-            n = len(mins)
+
+            # Group by currency to avoid mixing USD and GBP etc.
+            from collections import defaultdict
+            by_currency = defaultdict(list)
+            for r in rows:
+                by_currency[r["currency"]].append(r)
+
+            benchmarks = {}
+            for currency, crows in by_currency.items():
+                mins = sorted([r["salary_min"] for r in crows if r["salary_min"] > 0])
+                maxs = sorted([r["salary_max"] for r in crows if r["salary_max"] > 0])
+                benchmarks[currency or "unknown"] = {
+                    "count": len(crows),
+                    "currency": currency,
+                    "median_min": mins[len(mins) // 2] if mins else 0,
+                    "median_max": maxs[len(maxs) // 2] if maxs else 0,
+                    "range_min": mins[0] if mins else 0,
+                    "range_max": maxs[-1] if maxs else 0,
+                }
+
             return jsonify({
-                "count": len(rows),
-                "currency": rows[0]["currency"],
-                "median_min": mins[n // 2] if mins else 0,
-                "median_max": maxs[n // 2] if maxs else 0,
-                "range_min": mins[0] if mins else 0,
-                "range_max": maxs[-1] if maxs else 0,
+                "total_count": len(rows),
+                "by_currency": benchmarks,
             })
         except Exception as e:
             return jsonify({"error": str(e)}), 500
@@ -345,7 +371,7 @@ def run_webapp(host: str = "0.0.0.0", port: int = 8080, db_path: str = "data/sta
     app = create_webapp(db_path)
     if app:
         print(f"Starting LLA Web App at http://{host}:{port}")
-        print(f"Default credentials: admin / changeme")
+        print(f"Set LLA_PASSWORD_HASH env var for authentication")
         app.run(host=host, port=port, debug=False)
 
 

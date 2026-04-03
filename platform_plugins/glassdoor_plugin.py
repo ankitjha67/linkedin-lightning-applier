@@ -193,6 +193,7 @@ class GlassdoorPlugin(JobPlatform):
                 m = re.search(r'jobListingId=(\d+)', href)
                 if m:
                     job_id = m.group(1)
+            is_real_id = bool(job_id)
             if not job_id:
                 import hashlib
                 job_id = hashlib.md5(f"{title}|{company}".encode()).hexdigest()[:12]
@@ -205,12 +206,18 @@ class GlassdoorPlugin(JobPlatform):
                     salary = els[0].text.strip()
                     break
 
+            # Only build a real URL from real IDs — hash-based IDs won't resolve
+            prefix = "glassdoor_" if is_real_id else "glassdoor_hash_"
+            job_url = href if href else (
+                f"https://www.glassdoor.com/job-listing/?jl={job_id}" if is_real_id else ""
+            )
+
             return {
                 "title": title,
                 "company": company,
                 "location": location,
-                "job_id": f"glassdoor_{job_id}",
-                "job_url": href or f"https://www.glassdoor.com/job-listing/?jl={job_id}",
+                "job_id": f"{prefix}{job_id}",
+                "job_url": job_url,
                 "posted_time": "",
                 "applied": False,
                 "salary_info": salary,
@@ -295,22 +302,47 @@ class GlassdoorPlugin(JobPlatform):
         from selenium.webdriver.common.by import By
         nav = driver.find_elements(By.CSS_SELECTOR,
             'button[data-test="pagination-next"], li.next a, a[aria-label="Next"]')
-        return any(el.is_displayed() for el in nav)
+        for el in nav:
+            if el.is_displayed() and self._is_element_enabled(el):
+                return True
+        return False
 
     def go_to_next_page(self, driver) -> bool:
         from selenium.webdriver.common.by import By
         try:
+            old_url = driver.current_url
             for sel in ['button[data-test="pagination-next"]', 'li.next a', 'a[aria-label="Next"]']:
                 els = driver.find_elements(By.CSS_SELECTOR, sel)
                 for el in els:
-                    if el.is_displayed():
+                    if el.is_displayed() and self._is_element_enabled(el):
                         el.click()
                         time.sleep(3)
                         self._dismiss_popups(driver)
-                        return True
+                        # Verify navigation actually occurred
+                        if driver.current_url != old_url:
+                            return True
+                        # URL didn't change — check if results container refreshed
+                        cards = self.get_job_cards(driver)
+                        if cards:
+                            return True
+                        return False
         except Exception:
             pass
         return False
+
+    @staticmethod
+    def _is_element_enabled(el) -> bool:
+        """Check if an element is truly enabled/actionable."""
+        if el.get_attribute("aria-disabled") == "true":
+            return False
+        if el.get_attribute("disabled") is not None:
+            return False
+        classes = el.get_attribute("class") or ""
+        if "disabled" in classes.lower():
+            return False
+        if el.get_attribute("tabindex") == "-1":
+            return False
+        return True
 
     def _dismiss_popups(self, driver):
         """Dismiss Glassdoor login/signup modals and cookie banners."""
