@@ -1,5 +1,42 @@
 # Changelog
 
+## v2.2.0 — Production Hardening
+
+### Added
+
+**Test Suite (165 tests)**
+- `tests/test_state.py` — 32 tables, CRUD operations, migration, CSV export, salary benchmarks
+- `tests/test_match_scorer.py` — JSON parsing, score bounds, threshold logic, mock AI
+- `tests/test_salary_intel.py` — 10+ currency formats, AUD/CAD/SGD multi-char symbol fix
+- `tests/test_dedup_engine.py` — Fingerprinting, cross-platform dedup, company/title normalization
+- `tests/test_apply_timing.py` — Freshness scoring, queue reordering, posted time parsing
+- `tests/test_jd_change_tracker.py` — Snapshot capture, change detection, salary change tracking
+- `tests/test_validate_config.py` — Missing sections, conflicting settings, numeric bounds
+- `tests/run_tests.py` — Test runner
+
+**Crash Recovery**
+- **Checkpoint Manager** (`checkpoint_manager.py`) — Saves cycle state every N jobs (search term, location, job index, seen IDs). Resumes after crash. Auto-discards stale checkpoints (>2h). Atomic writes via tmp+rename.
+
+**Dynamic Rate Limiting**
+- **Rate Limiter** (`rate_limiter.py`) — Detects ban signals (CAPTCHAs, "unusual activity", 429s, throttle redirects). 5-level escalation (normal → cautious → slow → very_slow → paused). Exponential cooldowns (5-60min). Page load anomaly detection. Error rate monitoring. Gradual deescalation.
+
+**Configuration Validation**
+- **Config Validator** (`validate_config.py`) — Validates 11 config areas on startup: credentials, search terms, AI provider, scheduling limits, numeric ranges, file paths, feature dependencies, conflicting settings. Errors vs warnings separation.
+
+**Observability**
+- **Prometheus Metrics** (`metrics.py`) — Exports at `/metrics` in Prometheus text format. Counters (applications, skips, errors), gauges (daily applied, match scores), histograms with p50/p95/p99 (cycle duration, AI latency).
+
+### Fixed
+- AUD/CAD/SGD/HKD currency detection — multi-char symbols (A$, C$, S$, HK$) now checked before single-char ($)
+- JD salary changes now detected even when overall text similarity is above threshold
+- Test expectation for 25h freshness score corrected (0.3, not 0.5)
+- JD tracker test column name alignment (snapshot_hash)
+
+### Stats
+- 57 Python files, 17,663 lines of code, 165 tests, 32 database tables
+
+---
+
 ## v2.1.0 — Intelligence & Automation Expansion
 
 ### Added

@@ -132,14 +132,18 @@ main.py
   ├── status_scraper.py (depends on: selenium, state.py)
   ├── job_watchlist.py  (depends on: state.py, selenium)
   ├── referral_automator.py (depends on: ai.py, state.py, selenium)
-  └── multi_language.py (depends on: ai.py, optional: deepl)
+  ├── multi_language.py (depends on: ai.py, optional: deepl)
+  ├── checkpoint_manager.py (standalone, saves to data/checkpoint.json)
+  ├── rate_limiter.py  (standalone, monitors driver for ban signals)
+  ├── validate_config.py (standalone, runs on startup)
+  └── metrics.py       (depends on: state.py, optional: flask)
 ```
 
 Every module except the 4 core files (main, linkedin, ai, state) is imported with `try/except` and degrades gracefully if missing or disabled.
 
 ## Database Schema
 
-SQLite database at `data/state.db` with 21 tables:
+SQLite database at `data/state.db` with 32 tables:
 
 ### Core Tables
 

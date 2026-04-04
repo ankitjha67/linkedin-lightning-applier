@@ -41,6 +41,9 @@ Copy `config.example.yaml` to `config.yaml` and fill in your details. `config.ya
 - [Job Watchlist](#job-watchlist)
 - [Referral Automator](#referral-automator)
 - [Multi-Language](#multi-language)
+- [Checkpoint](#checkpoint)
+- [Rate Limiter](#rate-limiter)
+- [Metrics](#metrics)
 - [Logging](#logging)
 
 ---
@@ -585,6 +588,52 @@ multi_language:
 ```
 
 Detects the language of each job description and, when it differs from your resume language, translates the tailored resume and cover letter. Supports 10 languages. Translation uses either your configured AI provider or DeepL for higher accuracy.
+
+## Checkpoint
+
+```yaml
+checkpoint:
+  enabled: true
+  auto_save_interval: 5          # Save checkpoint every N jobs processed
+```
+
+Saves cycle state (search term, location, job index, seen IDs) to `data/checkpoint.json` every N jobs. On restart, the bot resumes from the checkpoint instead of starting over. Stale checkpoints (>2 hours old) are automatically discarded. Uses atomic writes (tmp file + rename) to prevent corruption.
+
+## Rate Limiter
+
+```yaml
+rate_limiter:
+  enabled: true
+  base_delay_min: 3              # Minimum delay between actions (seconds)
+  base_delay_max: 8              # Maximum delay between actions (seconds)
+```
+
+Dynamically adjusts delays based on LinkedIn's response patterns. Detects: CAPTCHAs, "unusual activity" warnings, challenge/verification redirects, page load anomalies, and high error rates. 5-level throttle escalation:
+
+| Level | Name | Delay Multiplier | Triggered by |
+|-------|------|-----------------|-------------|
+| 0 | Normal | 1.0x | Default |
+| 1 | Cautious | 1.5x | Page load anomaly, moderate error rate |
+| 2 | Slow | 2.5x | Challenge redirect, high error rate |
+| 3 | Very Slow | 4.0x | CAPTCHA detected (5-15min cooldown) |
+| 4 | Paused | 8.0x | Ban warning (30-60min cooldown) |
+
+Gradually deescalates when no warnings detected for 10+ minutes.
+
+## Metrics
+
+```yaml
+metrics:
+  enabled: false
+  port: 9090                     # Prometheus scrape port
+  host: "0.0.0.0"
+```
+
+Exports all metrics at `http://localhost:9090/metrics` in Prometheus text format. Scrape with Prometheus, visualize in Grafana. Tracks:
+
+- **Counters:** applications_total, skips_total, errors_total, cycles_total, ai_calls_total
+- **Gauges:** daily_applied, total_applied, recruiters_tracked, visa_sponsors, avg_match_score
+- **Histograms (p50/p95/p99):** cycle_duration_seconds, match_score, ai_latency_ms
 
 ## Logging
 

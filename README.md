@@ -218,11 +218,16 @@ status_scraper.py       Scrapes ATS portals for application status updates
 job_watchlist.py        Smart bookmarking with reminders and activity checks
 referral_automator.py   Auto-drafts referral request messages for connections
 multi_language.py       JD language detection + resume/cover letter translation
+checkpoint_manager.py   Crash recovery — saves/restores cycle state mid-progress
+rate_limiter.py         Dynamic throttling — detects bans, CAPTCHAs, auto-backs off
+validate_config.py      Startup config validation (11 checks, errors vs warnings)
+metrics.py              Prometheus-compatible /metrics endpoint for Grafana
 webapp/                 SaaS web app with auth, CSRF, search, API
 docker/                 Dockerfile, docker-compose, health check
+tests/                  165 unit tests (state, scoring, salary, dedup, timing, JD tracking, config)
 ```
 
-15,282 lines across 44 Python files and 36 features.
+17,663 lines across 57 Python files and 36 features. Includes 165 unit tests.
 
 ## AI Providers
 
@@ -259,6 +264,28 @@ python webapp/app.py
 ```
 
 Features: login with session auth, CSRF protection, paginated job browser with search, recruiter directory, salary benchmarks, interview prep viewer, REST API endpoints, health check.
+
+## Testing
+
+```bash
+# Run all 165 tests
+python -m unittest discover -s tests -v
+
+# Run specific test module
+python -m unittest tests.test_state -v
+python -m unittest tests.test_salary_intel -v
+```
+
+Tests cover: State class (32 tables, CRUD, migration, CSV export), match scoring (JSON parsing, bounds, thresholds), salary parsing (10+ currencies), dedup engine (fingerprinting, cross-platform matching), apply timing (freshness scoring, queue reordering), JD change tracking (snapshot capture, change detection), and config validation (missing sections, conflicts, numeric bounds).
+
+## Production Hardening
+
+The bot includes 4 hardening modules for reliable 24/7 operation:
+
+- **Crash Recovery** (`checkpoint_manager.py`) — Saves cycle state every 5 jobs. On restart, resumes from checkpoint instead of re-processing. Stale checkpoints (>2h) auto-discarded.
+- **Rate Limiting** (`rate_limiter.py`) — Detects LinkedIn ban signals (CAPTCHAs, "unusual activity", 429s). 5-level throttle escalation with cooldowns from 5-60 minutes. Page load anomaly detection. Gradual deescalation when safe.
+- **Config Validation** (`validate_config.py`) — Validates 11 config areas on startup: credentials, search terms, AI provider, scheduling, numeric ranges, file paths, feature deps, conflicting settings. Reports errors vs warnings.
+- **Prometheus Metrics** (`metrics.py`) — Exports counters/gauges/histograms at `/metrics` for Grafana dashboards. Tracks: applications, skips, errors, cycle duration, AI latency, match scores.
 
 ## Contributing
 

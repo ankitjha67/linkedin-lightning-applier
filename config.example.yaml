@@ -643,3 +643,26 @@ multi_language:
     - "hindi"
     - "japanese"
     - "mandarin"
+
+# ═══════════════════════════════════════════════════════════════
+# CHECKPOINT — Crash recovery
+# ═══════════════════════════════════════════════════════════════
+checkpoint:
+  enabled: true
+  auto_save_interval: 5          # Save checkpoint every N jobs processed
+
+# ═══════════════════════════════════════════════════════════════
+# RATE LIMITER — Dynamic throttling with ban detection
+# ═══════════════════════════════════════════════════════════════
+rate_limiter:
+  enabled: true
+  base_delay_min: 3              # Minimum delay between actions (seconds)
+  base_delay_max: 8              # Maximum delay between actions (seconds)
+
+# ═══════════════════════════════════════════════════════════════
+# METRICS — Prometheus-compatible endpoint
+# ═══════════════════════════════════════════════════════════════
+metrics:
+  enabled: false
+  port: 9090                     # Prometheus scrape port
+  host: "0.0.0.0"

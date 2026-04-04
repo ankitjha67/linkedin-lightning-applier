@@ -203,6 +203,26 @@ try:
 except ImportError:
     MultiLanguageGenerator = None
 
+try:
+    from checkpoint_manager import CheckpointManager
+except ImportError:
+    CheckpointManager = None
+
+try:
+    from rate_limiter import RateLimiter
+except ImportError:
+    RateLimiter = None
+
+try:
+    from validate_config import ConfigValidator
+except ImportError:
+    ConfigValidator = None
+
+try:
+    from metrics import MetricsCollector
+except ImportError:
+    MetricsCollector = None
+
 
 # ===================================================================
 shutdown_requested = False
@@ -821,6 +841,23 @@ def run_forever(config_path: str):
     watchlist = JobWatchlist(cfg, state) if JobWatchlist else None
     referral_bot = ReferralAutomator(ai_answerer, cfg, state) if ReferralAutomator else None
     multi_lang = MultiLanguageGenerator(ai_answerer, cfg) if MultiLanguageGenerator else None
+    checkpoint = CheckpointManager(cfg) if CheckpointManager else None
+    rate_limit = RateLimiter(cfg) if RateLimiter else None
+    metrics_collector = MetricsCollector(cfg, state) if MetricsCollector else None
+
+    # Validate configuration on startup
+    if ConfigValidator:
+        validator = ConfigValidator(cfg)
+        if not validator.validate():
+            log.error("Configuration validation failed. Check errors above.")
+            # Continue anyway — errors are logged but non-fatal for backwards compat
+
+    # Start metrics server
+    if metrics_collector and metrics_collector.enabled:
+        try:
+            metrics_collector.start_server()
+        except Exception as e:
+            log.debug(f"Metrics server failed: {e}")
 
     # Log enabled features
     features = []
@@ -1029,12 +1066,41 @@ def run_forever(config_path: str):
             except Exception:
                 pass
 
+        # Rate limiter: check for warnings and adjust throttle
+        if rate_limit and rate_limit.enabled:
+            try:
+                warning = rate_limit.check_page_for_warnings(driver)
+                if warning:
+                    log.warning(f"Rate limit warning: {warning}")
+                rate_limit.on_cycle_complete()
+                if rate_limit.should_pause_cycle():
+                    status = rate_limit.get_status()
+                    log.warning(f"Rate limiter pausing. Level: {status['throttle_label']}, "
+                               f"cooldown: {status['cooldown_remaining_s']:.0f}s")
+            except Exception:
+                pass
+
+        # Checkpoint: clear on successful cycle completion
+        if checkpoint:
+            checkpoint.clear()
+
+        # Metrics: record cycle
+        if metrics_collector:
+            try:
+                metrics_collector.update_from_state()
+            except Exception:
+                pass
+
         if shutdown_requested:
             break
 
-        # Sleep with jitter
+        # Sleep with jitter (rate limiter may override)
         jitter = random.randint(-60, 60)
         wait = max(interval + jitter, 60)
+        if rate_limit and rate_limit.enabled:
+            extra = rate_limit.get_delay()
+            if extra > wait:
+                wait = int(extra)
         log.info(f"💤  Next cycle in {wait//60}m {wait%60}s")
         for _ in range(wait):
             if shutdown_requested: break

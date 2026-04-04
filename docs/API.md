@@ -191,6 +191,41 @@ Salary benchmark data.
 
 ---
 
+---
+
+## Prometheus Metrics (port 9090)
+
+When `metrics.enabled: true`, a Prometheus-compatible endpoint is served.
+
+### GET /metrics
+
+Returns all metrics in Prometheus text format.
+
+```
+# TYPE lla_applications_total counter
+lla_applications_total 342
+
+# TYPE lla_daily_applied gauge
+lla_daily_applied 12
+
+# TYPE lla_avg_match_score gauge
+lla_avg_match_score 76.3
+
+# TYPE lla_cycle_duration_seconds summary
+lla_cycle_duration_seconds_count 45
+lla_cycle_duration_seconds_sum 2340.5
+lla_cycle_duration_seconds_quantile{quantile="0.5"} 48.2
+lla_cycle_duration_seconds_quantile{quantile="0.95"} 92.1
+```
+
+### GET /health
+
+```
+ok
+```
+
+---
+
 ## Web App API (port 8080)
 
 The SaaS web app (`webapp/app.py`) requires authentication. All `/api/v1/` endpoints require a valid session.

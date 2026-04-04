@@ -314,6 +314,7 @@ class State:
                 snapshot_hash   TEXT,
                 description     TEXT,
                 salary_info     TEXT DEFAULT '',
+                salary_hash     TEXT DEFAULT '',
                 captured_at     TEXT DEFAULT (datetime('now','localtime'))
             );
 
@@ -426,6 +427,7 @@ class State:
             ("applied_jobs", "match_score", "INTEGER DEFAULT 0"),
             ("applied_jobs", "resume_version", "TEXT DEFAULT ''"),
             ("skipped_jobs", "match_score", "INTEGER DEFAULT 0"),
+            ("jd_snapshots", "salary_hash", "TEXT DEFAULT ''"),
         ]
         for table, col, col_type in migrations:
             try:
