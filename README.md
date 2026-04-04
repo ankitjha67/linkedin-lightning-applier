@@ -60,6 +60,8 @@ The bot runs in a continuous loop. Every cycle:
 - **Ban Prevention** — undetected-chromedriver, daily/cycle caps, randomized delays, active hours, human-like scrolling.
 - **Hot-Reload Config** — Edit `config.yaml` while running; changes apply next cycle.
 
+> **Disclaimer:** This software automates interactions with LinkedIn and other platforms, which may violate their Terms of Service. **Use at your own risk.** See [DISCLAIMER.md](DISCLAIMER.md) and [TERMS_OF_USE.md](TERMS_OF_USE.md) before using.
+
 ## Quick Start
 
 > **Full guide:** See [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md) for the complete step-by-step walkthrough covering Chrome setup, AI provider selection, all config options, Docker deployment, alert setup, and troubleshooting.
@@ -300,6 +302,14 @@ The bot includes 4 hardening modules for reliable 24/7 operation:
 ## Inspired By
 
 [GodsScion/Auto_job_applier_linkedIn](https://github.com/GodsScion/Auto_job_applier_linkedIn) — the original Python Selenium bot with 1.9K+ stars. This project takes the core idea and rebuilds it with AI resume tailoring, match scoring, multi-platform support, recruiter messaging, Google Jobs scraping, real-time dashboard, and ML-powered success prediction.
+
+## Legal
+
+- **[DISCLAIMER.md](DISCLAIMER.md)** — Risk disclosure, LinkedIn ToS implications, legal considerations, data security warnings, AI content caveats, recommended precautions
+- **[TERMS_OF_USE.md](TERMS_OF_USE.md)** — User responsibilities, prohibited uses, AI-generated content terms, data privacy, limitation of liability, indemnification
+- **[LICENSE](LICENSE)** — MIT License
+
+**This software may violate LinkedIn's Terms of Service. Using automation on LinkedIn can result in account restrictions or bans. The authors accept no liability. Use at your own risk.**
 
 ## License
 
