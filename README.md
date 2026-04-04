@@ -62,6 +62,8 @@ The bot runs in a continuous loop. Every cycle:
 
 ## Quick Start
 
+> **Full guide:** See [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md) for the complete step-by-step walkthrough covering Chrome setup, AI provider selection, all config options, Docker deployment, alert setup, and troubleshooting.
+
 ```bash
 git clone https://github.com/ankitjha67/linkedin-lightning-applier.git
 cd linkedin-lightning-applier
