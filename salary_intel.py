@@ -65,9 +65,11 @@ class SalaryIntel:
 
         text = text.strip()
 
-        # Detect currency
+        # Detect currency (check multi-char symbols first to avoid
+        # "$" matching before "A$", "C$", "S$", "HK$")
         currency = ""
-        for symbol, code in CURRENCY_PATTERNS.items():
+        for symbol, code in sorted(CURRENCY_PATTERNS.items(),
+                                    key=lambda x: len(x[0]), reverse=True):
             if symbol in text:
                 currency = code
                 break

@@ -244,8 +244,20 @@ class JDChangeTracker:
 
         # Check overall similarity
         ratio = SequenceMatcher(None, old, new).ratio()
+
+        # Always check salary changes even if overall text is very similar
+        old_salaries = self.SALARY_PATTERN.findall(old)
+        new_salaries = self.SALARY_PATTERN.findall(new)
+        if old_salaries != new_salaries:
+            changes.append({
+                "type": "salary_change",
+                "summary": "Inline salary information changed",
+                "old_value": ", ".join(old_salaries) if old_salaries else "",
+                "new_value": ", ".join(new_salaries) if new_salaries else "",
+            })
+
         if ratio > (1.0 - self.min_change_ratio):
-            # Changes are below the minimum threshold
+            # Changes are below the minimum threshold for non-salary changes
             return changes
 
         # Extract and compare requirements
@@ -280,17 +292,6 @@ class JDChangeTracker:
                 "summary": "Urgency language added to posting",
                 "old_value": "",
                 "new_value": new_urgency,
-            })
-
-        # Check for inline salary changes
-        old_salaries = self.SALARY_PATTERN.findall(old)
-        new_salaries = self.SALARY_PATTERN.findall(new)
-        if old_salaries != new_salaries:
-            changes.append({
-                "type": "salary_change",
-                "summary": "Inline salary information changed",
-                "old_value": ", ".join(old_salaries) if old_salaries else "",
-                "new_value": ", ".join(new_salaries) if new_salaries else "",
             })
 
         # General description modification if no specific category matched
