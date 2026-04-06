@@ -666,3 +666,62 @@ metrics:
   enabled: false
   port: 9090                     # Prometheus scrape port
   host: "0.0.0.0"
+
+# ═══════════════════════════════════════════════════════════════
+# JOB EVALUATION — Structured A-F evaluation per job
+# ═══════════════════════════════════════════════════════════════
+job_evaluation:
+  enabled: true
+  auto_evaluate: true            # Auto-evaluate after match scoring
+  min_score_to_evaluate: 60      # Only evaluate jobs scoring above this
+  save_reports: true             # Save full reports to data/reports/
+
+# ═══════════════════════════════════════════════════════════════
+# STORY BANK — Persistent STAR+R interview stories
+# ═══════════════════════════════════════════════════════════════
+story_bank:
+  enabled: true
+  auto_extract: true             # Auto-extract stories from evaluations
+  max_stories: 50                # Cap total stories
+
+# ═══════════════════════════════════════════════════════════════
+# ARCHETYPE CLASSIFIER — Job type classification
+# ═══════════════════════════════════════════════════════════════
+archetype_classifier:
+  enabled: true
+  custom_archetypes: {}          # Override/extend default archetypes
+
+# ═══════════════════════════════════════════════════════════════
+# PORTFOLIO EVALUATOR — Score project ideas for job search
+# ═══════════════════════════════════════════════════════════════
+portfolio_evaluator:
+  enabled: true
+
+# ═══════════════════════════════════════════════════════════════
+# TRAINING EVALUATOR — Course/cert ROI scoring
+# ═══════════════════════════════════════════════════════════════
+training_evaluator:
+  enabled: true
+
+# ═══════════════════════════════════════════════════════════════
+# DEEP RESEARCH — 6-axis company intelligence
+# ═══════════════════════════════════════════════════════════════
+deep_research:
+  enabled: true
+  auto_research: false           # Auto-research after evaluation (uses many AI tokens)
+
+# ═══════════════════════════════════════════════════════════════
+# CV TEMPLATE — ATS-optimized HTML→PDF CV generation
+# ═══════════════════════════════════════════════════════════════
+cv_template:
+  enabled: true
+  output_dir: "data/cv_output"
+  inject_keywords: true          # Auto-inject JD keywords into CV
+
+# ═══════════════════════════════════════════════════════════════
+# PIPELINE MANAGER — Application lifecycle state machine
+# ═══════════════════════════════════════════════════════════════
+pipeline_manager:
+  enabled: true
+  auto_ghost_days: 14            # Auto-mark as ghosted after N days
+  enforce_transitions: true      # Enforce valid state transitions

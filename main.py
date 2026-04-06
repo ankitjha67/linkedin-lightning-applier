@@ -223,6 +223,46 @@ try:
 except ImportError:
     MetricsCollector = None
 
+try:
+    from job_evaluator import JobEvaluator
+except ImportError:
+    JobEvaluator = None
+
+try:
+    from story_bank import StoryBank
+except ImportError:
+    StoryBank = None
+
+try:
+    from archetype_classifier import ArchetypeClassifier
+except ImportError:
+    ArchetypeClassifier = None
+
+try:
+    from portfolio_evaluator import PortfolioEvaluator
+except ImportError:
+    PortfolioEvaluator = None
+
+try:
+    from training_evaluator import TrainingEvaluator
+except ImportError:
+    TrainingEvaluator = None
+
+try:
+    from deep_research import DeepResearcher
+except ImportError:
+    DeepResearcher = None
+
+try:
+    from cv_template_engine import CVTemplateEngine
+except ImportError:
+    CVTemplateEngine = None
+
+try:
+    from pipeline_manager import PipelineManager
+except ImportError:
+    PipelineManager = None
+
 
 # ===================================================================
 shutdown_requested = False
@@ -852,6 +892,16 @@ def run_forever(config_path: str):
             log.error("Configuration validation failed. Check errors above.")
             # Continue anyway — errors are logged but non-fatal for backwards compat
 
+    # Initialize career intelligence modules
+    evaluator = JobEvaluator(ai_answerer, cfg, state) if JobEvaluator else None
+    stories = StoryBank(ai_answerer, cfg, state) if StoryBank else None
+    archetype_clf = ArchetypeClassifier(ai_answerer, cfg) if ArchetypeClassifier else None
+    portfolio_eval = PortfolioEvaluator(ai_answerer, cfg, state) if PortfolioEvaluator else None
+    training_eval = TrainingEvaluator(ai_answerer, cfg, state) if TrainingEvaluator else None
+    researcher = DeepResearcher(ai_answerer, cfg, state) if DeepResearcher else None
+    cv_engine = CVTemplateEngine(ai_answerer, cfg) if CVTemplateEngine else None
+    pipeline = PipelineManager(cfg, state) if PipelineManager else None
+
     # Start metrics server
     if metrics_collector and metrics_collector.enabled:
         try:
@@ -890,6 +940,14 @@ def run_forever(config_path: str):
     if watchlist and watchlist.enabled: features.append("Job Watchlist")
     if referral_bot and referral_bot.enabled: features.append("Referral Automator")
     if multi_lang and multi_lang.enabled: features.append("Multi-Language")
+    if evaluator and evaluator.enabled: features.append("Job Evaluation (A-F)")
+    if stories and stories.enabled: features.append("Story Bank")
+    if archetype_clf and archetype_clf.enabled: features.append("Archetype Classifier")
+    if portfolio_eval and portfolio_eval.enabled: features.append("Portfolio Evaluator")
+    if training_eval and training_eval.enabled: features.append("Training Evaluator")
+    if researcher and researcher.enabled: features.append("Deep Research")
+    if cv_engine and cv_engine.enabled: features.append("ATS CV Template")
+    if pipeline and pipeline.enabled: features.append("Pipeline Manager")
     if dash and dash.enabled: features.append(f"Dashboard (:{dash.port})")
     if features:
         log.info(f"🚀 Features: {', '.join(features)}")

@@ -1,5 +1,28 @@
 # Changelog
 
+## v2.3.0 — Career Intelligence (from career-ops)
+
+### Added
+
+**Career Intelligence Modules (8 new, 3,457 lines)**
+- **Job Evaluator** (`job_evaluator.py`, 416 lines) — Structured A-F evaluation: role summary, CV match with gap mitigation strategy, level strategy ("sell senior without lying"), comp research, top 5 CV/LinkedIn changes, STAR+R interview plan.
+- **Story Bank** (`story_bank.py`, 504 lines) — Persistent STAR+Reflection story accumulator. Extracts stories from evaluations, deduplicates, finds best stories for specific interview questions, generates "tell me about yourself" narratives.
+- **Archetype Classifier** (`archetype_classifier.py`, 445 lines) — Classifies jobs into 11 archetypes (backend, frontend, fullstack, data engineer, data scientist, devops, PM, eng manager, AI/ML, security, risk/finance). Keyword + AI classification with confidence scores.
+- **Portfolio Evaluator** (`portfolio_evaluator.py`, 379 lines) — Scores project ideas on 6 weighted dimensions (signal 25%, uniqueness 20%, demo-ability 20%, metrics 15%, time-to-MVP 10%, STAR potential 10%). BUILD/SKIP/PIVOT verdicts with 2-week plans.
+- **Training Evaluator** (`training_evaluator.py`, 384 lines) — Scores courses/certifications on 6 dimensions (alignment, recruiter signal, time/effort, opportunity cost, risks, portfolio output). TAKE/SKIP/TIMEBOX verdicts with weekly deliverables.
+- **Deep Researcher** (`deep_research.py`, 416 lines) — 6-axis company research: AI strategy, recent moves, engineering culture, probable challenges, competitors, candidate angle. Each axis gets a separate AI call for depth.
+- **CV Template Engine** (`cv_template_engine.py`, 531 lines) — ATS-optimized HTML→PDF CV generation. Embedded professional template. Keyword injection from JD. Playwright/weasyprint/fpdf2 fallback chain for PDF rendering.
+- **Pipeline Manager** (`pipeline_manager.py`, 382 lines) — Formal state machine: discovered → evaluated → queued → applied → responded → interviewing → offer → accepted/rejected/withdrawn/ghosted. Enforced transitions, auto-ghosting, priority queue.
+
+**Schema:** 7 new SQLite tables (job_evaluations, story_bank, job_archetypes, portfolio_projects, training_evaluations, deep_research, pipeline_states)
+
+**Config:** 8 new sections with full documentation
+
+### Stats
+- 65 Python files, 21,283 lines of code, 165 tests, 39 database tables, 44 features
+
+---
+
 ## v2.2.0 — Production Hardening
 
 ### Added

@@ -53,6 +53,16 @@ The bot runs in a continuous loop. Every cycle:
 - **Docker Deployment** — Dockerfile with headless Chrome, docker-compose with volume mounts, health check endpoint.
 - **SaaS Web App** — Flask app with authentication, CSRF protection, job search, salary benchmarks, interview prep viewer.
 
+### Career Intelligence (8 — from career-ops)
+- **A-F Job Evaluation** (`job_evaluator.py`) — 6-block structured evaluation: role summary, CV match with gap mitigation, level strategy, comp research, personalization plan, STAR+R interview prep.
+- **Interview Story Bank** (`story_bank.py`) — Accumulates STAR+Reflection stories across all evaluations. 5-10 master stories that answer any behavioral question.
+- **Role Archetype Classifier** (`archetype_classifier.py`) — Classifies jobs into archetypes (backend, frontend, data, devops, PM, etc.). Changes which skills to emphasize.
+- **Portfolio Project Evaluator** (`portfolio_evaluator.py`) — Scores project ideas on 6 dimensions (signal, uniqueness, demo-ability, metrics, time-to-MVP, STAR potential). BUILD/SKIP/PIVOT verdicts.
+- **Training/Cert Evaluator** (`training_evaluator.py`) — Scores courses on alignment, recruiter signal, time/effort, opportunity cost, risks, portfolio output. TAKE/SKIP/TIMEBOX verdicts.
+- **Deep Company Research** (`deep_research.py`) — 6-axis research: AI strategy, recent moves, eng culture, challenges, competitors, candidate angle.
+- **ATS CV Template Engine** (`cv_template_engine.py`) — ATS-optimized HTML→PDF CV generation with keyword injection from JD.
+- **Pipeline State Machine** (`pipeline_manager.py`) — Formal lifecycle states (discovered → evaluated → applied → interviewing → offer) with enforced transitions.
+
 ### Core Foundations
 - **AI Form Filling** — 8 LLM providers: OpenAI, Anthropic Claude, Google Gemini, DeepSeek, Groq, Together, Ollama (local), LM Studio (local). Answers cached in SQLite.
 - **Recruiter Tracking** — Names, titles, and LinkedIn URLs from "Meet the hiring team" sections.
@@ -228,10 +238,18 @@ validate_config.py      Startup config validation (11 checks, errors vs warnings
 metrics.py              Prometheus-compatible /metrics endpoint for Grafana
 webapp/                 SaaS web app with auth, CSRF, search, API
 docker/                 Dockerfile, docker-compose, health check
+job_evaluator.py        Structured A-F evaluation per job (6 blocks)
+story_bank.py           Persistent STAR+R interview story accumulator
+archetype_classifier.py Role archetype classification (11 default types)
+portfolio_evaluator.py  Portfolio project scoring (6 dimensions, BUILD/SKIP/PIVOT)
+training_evaluator.py   Course/cert ROI scoring (TAKE/SKIP/TIMEBOX)
+deep_research.py        6-axis deep company research
+cv_template_engine.py   ATS-optimized HTML→PDF CV generation
+pipeline_manager.py     Application lifecycle state machine
 tests/                  165 unit tests (state, scoring, salary, dedup, timing, JD tracking, config)
 ```
 
-17,663 lines across 57 Python files and 36 features. Includes 165 unit tests.
+21,283 lines across 65 Python files and 44 features. Includes 165 unit tests.
 
 ## AI Providers
 

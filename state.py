@@ -418,6 +418,113 @@ class State:
                 sent_at         TEXT,
                 created_at      TEXT DEFAULT (datetime('now','localtime'))
             );
+
+            -- Job Evaluations (A-F structured reports)
+            CREATE TABLE IF NOT EXISTS job_evaluations (
+                job_id          TEXT PRIMARY KEY,
+                company         TEXT,
+                title           TEXT,
+                archetype       TEXT DEFAULT '',
+                match_grade     TEXT DEFAULT '',
+                role_summary    TEXT DEFAULT '',
+                cv_match        TEXT DEFAULT '',
+                gap_analysis    TEXT DEFAULT '',
+                level_strategy  TEXT DEFAULT '',
+                comp_research   TEXT DEFAULT '',
+                personalization TEXT DEFAULT '',
+                interview_plan  TEXT DEFAULT '',
+                full_report     TEXT DEFAULT '',
+                evaluated_at    TEXT DEFAULT (datetime('now','localtime'))
+            );
+
+            -- Interview Story Bank (STAR+R)
+            CREATE TABLE IF NOT EXISTS story_bank (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                theme           TEXT DEFAULT '',
+                title           TEXT DEFAULT '',
+                source_job_id   TEXT DEFAULT '',
+                source_company  TEXT DEFAULT '',
+                source_role     TEXT DEFAULT '',
+                situation       TEXT DEFAULT '',
+                task            TEXT DEFAULT '',
+                action          TEXT DEFAULT '',
+                result          TEXT DEFAULT '',
+                reflection      TEXT DEFAULT '',
+                best_for        TEXT DEFAULT '',
+                times_used      INTEGER DEFAULT 0,
+                created_at      TEXT DEFAULT (datetime('now','localtime'))
+            );
+
+            -- Role Archetypes
+            CREATE TABLE IF NOT EXISTS job_archetypes (
+                job_id          TEXT PRIMARY KEY,
+                archetype       TEXT DEFAULT '',
+                confidence      REAL DEFAULT 0,
+                secondary       TEXT DEFAULT '',
+                classified_at   TEXT DEFAULT (datetime('now','localtime'))
+            );
+
+            -- Portfolio Projects
+            CREATE TABLE IF NOT EXISTS portfolio_projects (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                name            TEXT,
+                description     TEXT DEFAULT '',
+                signal_score    REAL DEFAULT 0,
+                uniqueness      REAL DEFAULT 0,
+                demoability     REAL DEFAULT 0,
+                metrics_potential REAL DEFAULT 0,
+                time_to_mvp     REAL DEFAULT 0,
+                star_potential  REAL DEFAULT 0,
+                total_score     REAL DEFAULT 0,
+                verdict         TEXT DEFAULT '',
+                plan            TEXT DEFAULT '',
+                evaluated_at    TEXT DEFAULT (datetime('now','localtime'))
+            );
+
+            -- Training Evaluations
+            CREATE TABLE IF NOT EXISTS training_evaluations (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                name            TEXT,
+                provider        TEXT DEFAULT '',
+                alignment_score REAL DEFAULT 0,
+                recruiter_signal REAL DEFAULT 0,
+                time_effort     TEXT DEFAULT '',
+                opportunity_cost TEXT DEFAULT '',
+                risks           TEXT DEFAULT '',
+                portfolio_output TEXT DEFAULT '',
+                verdict         TEXT DEFAULT '',
+                plan            TEXT DEFAULT '',
+                evaluated_at    TEXT DEFAULT (datetime('now','localtime'))
+            );
+
+            -- Deep Research Reports
+            CREATE TABLE IF NOT EXISTS deep_research (
+                job_id          TEXT PRIMARY KEY,
+                company         TEXT,
+                title           TEXT,
+                ai_strategy     TEXT DEFAULT '',
+                recent_moves    TEXT DEFAULT '',
+                eng_culture     TEXT DEFAULT '',
+                challenges      TEXT DEFAULT '',
+                competitors     TEXT DEFAULT '',
+                candidate_angle TEXT DEFAULT '',
+                full_report     TEXT DEFAULT '',
+                researched_at   TEXT DEFAULT (datetime('now','localtime'))
+            );
+
+            -- Application Pipeline States
+            CREATE TABLE IF NOT EXISTS pipeline_states (
+                job_id          TEXT PRIMARY KEY,
+                company         TEXT,
+                title           TEXT,
+                current_state   TEXT DEFAULT 'discovered',
+                previous_state  TEXT DEFAULT '',
+                state_history   TEXT DEFAULT '[]',
+                evaluation_grade TEXT DEFAULT '',
+                priority        INTEGER DEFAULT 0,
+                notes           TEXT DEFAULT '',
+                updated_at      TEXT DEFAULT (datetime('now','localtime'))
+            );
         """)
         self.conn.commit()
 
