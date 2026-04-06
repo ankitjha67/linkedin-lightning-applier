@@ -264,10 +264,12 @@ market_pulse.py         Real-time job market intelligence + weekly briefs
 employer_sla_tracker.py Response time tracking per company per stage
 quality_gate.py         Application quality scoring before submit
 career_simulator.py     5-year career path projection + comparison
-tests/                  165 unit tests (state, scoring, salary, dedup, timing, JD tracking, config)
+plugin_api.py           Extension framework — custom ATS, platforms, templates, hooks
+plugins/                Community extensions directory (auto-loaded on startup)
+tests/                  199 unit + integration tests
 ```
 
-25,993 lines across 73 Python files and 52 features. Includes 165 unit tests.
+26,814 lines across 75 Python files and 52 features. Includes 199 unit tests.
 
 ## AI Providers
 
@@ -304,6 +306,21 @@ python webapp/app.py
 ```
 
 Features: login with session auth, CSRF protection, paginated job browser with search, recruiter directory, salary benchmarks, interview prep viewer, REST API endpoints, health check.
+
+## Plugins
+
+Extend the bot without modifying core code. Drop Python files in `plugins/`:
+
+```python
+# plugins/my_ats_handler.py
+def register(registry):
+    registry.register_plugin("my-ats", "1.0.0", "You", "Custom ATS support")
+    registry.register_ats("bamboohr", BambooHRHandler)
+    registry.register_hook("post_apply", lambda **kw: print(f"Applied to {kw.get('company')}!"))
+    registry.register_notifier("webhook", lambda msg: requests.post(URL, json={"text": msg}))
+```
+
+Extension points: ATS handlers, job platforms, resume templates, role archetypes, custom scorers, notification channels, lifecycle hooks (pre/post apply, pre/post cycle, on_error, on_response).
 
 ## Testing
 

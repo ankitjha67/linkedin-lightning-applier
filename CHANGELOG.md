@@ -1,5 +1,17 @@
 # Changelog
 
+## v2.5.0 — Extension Framework & Integration Tests
+
+### Added
+- **Plugin API** (`plugin_api.py`, 265 lines) — Extension framework with PluginRegistry and PluginLoader. 7 extension points: ATS handlers, job platforms, resume templates, archetypes, scorers, notifiers, lifecycle hooks. Auto-discovers plugins in `plugins/` directory. Creates example plugin on first run.
+- **Integration Tests** (`tests/test_integration.py`, 34 tests) — End-to-end pipeline tests: all 47+ tables created, full application records with match scores, CSV export verification, dedup cross-platform, config validation, plugin API, metrics, checkpoint, rate limiter.
+- **plugins/** directory with example plugin template
+
+### Stats
+- 75 Python files, 26,814 lines of code, 199 tests (165 unit + 34 integration)
+
+---
+
 ## v2.4.0 — Novel Intelligence (unique features)
 
 ### Added
