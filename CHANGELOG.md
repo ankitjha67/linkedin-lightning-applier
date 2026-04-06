@@ -1,5 +1,34 @@
 # Changelog
 
+## v2.4.0 — Novel Intelligence (unique features)
+
+### Added
+
+**8 Novel Features (4,710 lines) — capabilities no other job tool has**
+
+- **Interview Simulator** (`interview_simulator.py`, 461 lines) — Multi-turn conversational mock interviews. Generates role-specific questions (2 behavioral, 2 technical, 1 situational, 1 culture-fit). Scores responses 1-10 on relevance, specificity, structure, and impact. Asks follow-up probes. Tracks improvement across sessions.
+
+- **Offer War Room** (`offer_war_room.py`, 560 lines) — Multi-offer comparison with 6-dimension weighted scoring (total comp 30%, growth 20%, culture 15%, location 15%, visa 10%, work-life 10%). 5-year earnings projections with estimated raises by company type. Per-offer negotiation playbooks with leverage analysis, counter-offer scripts, and walk-away numbers.
+
+- **Application Forensics** (`application_forensics.py`, 542 lines) — Post-mortem pattern analysis across all applications. Analyzes by company type, resume style, timing, match score, recruiter messaging, JD keywords, location, and salary range. AI synthesizes findings into actionable recommendations: "You get 3x more callbacks when your resume leads with metrics."
+
+- **Ghost Predictor** (`ghost_predictor.py`, 450 lines) — Predicts ghost probability (0.0-1.0) before applying. Factors: company historical ghost rate, posting age, JD quality/specificity score, salary transparency, recruiter identification, market saturation. Weighted logistic combination calibrated against actuals.
+
+- **Market Pulse** (`market_pulse.py`, 646 lines) — Real-time job market intelligence. Captures weekly snapshots: posting volume trends, salary trajectories, new company detection, demand heatmaps (role × location). Generates weekly market briefs. Detects layoff signals (reduced postings). Identifies emerging role titles.
+
+- **Employer SLA Tracker** (`employer_sla_tracker.py`, 569 lines) — Tracks response time per company per pipeline stage (avg/min/max days). Predicts expected response dates. Flags overdue applications. Ranks fastest and slowest companies. Auto-learns from response_tracking data.
+
+- **Quality Gate** (`quality_gate.py`, 688 lines) — Pre-submission application quality scoring. Resume-JD keyword overlap %, cover letter specificity/relevance/authenticity, form completeness, match score integration. Detects issues ("Resume doesn't mention Python"). Configurable threshold — warn or block weak applications.
+
+- **Career Path Simulator** (`career_simulator.py`, 619 lines) — Models 5-year career trajectories from competing offers. Projects: title progression, salary trajectory with company-type raises (startup 5-15%, big tech 8-12%, finance 8-20%), equity vesting, promotion probability, skill growth, visa timeline. Side-by-side path comparison with AI recommendation.
+
+**Schema:** 8 new SQLite tables (interview_sessions, offer_comparisons, offers, forensics_reports, ghost_predictions, market_snapshots, employer_sla, quality_scores, career_simulations)
+
+### Stats
+- 73 Python files, 25,993 lines of code, 165 tests, 47+ DB tables, 52 features
+
+---
+
 ## v2.3.0 — Career Intelligence (from career-ops)
 
 ### Added

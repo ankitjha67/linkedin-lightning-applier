@@ -53,6 +53,16 @@ The bot runs in a continuous loop. Every cycle:
 - **Docker Deployment** — Dockerfile with headless Chrome, docker-compose with volume mounts, health check endpoint.
 - **SaaS Web App** — Flask app with authentication, CSRF protection, job search, salary benchmarks, interview prep viewer.
 
+### Novel Intelligence (8 — unique to this tool)
+- **Interview Simulator** (`interview_simulator.py`) — Conversational AI mock interviews. Multi-turn Q&A with scoring, follow-up probes, improvement tracking across sessions.
+- **Offer War Room** (`offer_war_room.py`) — Multi-offer comparison matrix. 6-dimension scoring weighted by priorities. 5-year comp projections. Per-offer negotiation playbooks.
+- **Application Forensics** (`application_forensics.py`) — Pattern analysis across hundreds of applications. Finds hidden correlations: which resume styles, timing, keywords, company types get callbacks.
+- **Ghost Predictor** (`ghost_predictor.py`) — Predicts ghost probability (0-1) before applying. Factors: company history, posting age, JD quality, salary transparency, recruiter presence.
+- **Market Pulse** (`market_pulse.py`) — Real-time job market intelligence. Posting trends, salary trajectories, new company detection, demand heatmaps, weekly market briefs.
+- **Employer SLA Tracker** (`employer_sla_tracker.py`) — Tracks response time per company per stage. Predicts when to expect responses. Flags overdue applications.
+- **Quality Gate** (`quality_gate.py`) — Scores application quality before submitting. Resume-JD match %, cover letter specificity, form completeness. Blocks weak applications.
+- **Career Path Simulator** (`career_simulator.py`) — Models 5-year career trajectories from competing offers. Comp projections, promotion timelines, skill growth, risk assessment.
+
 ### Career Intelligence (8 — from career-ops)
 - **A-F Job Evaluation** (`job_evaluator.py`) — 6-block structured evaluation: role summary, CV match with gap mitigation, level strategy, comp research, personalization plan, STAR+R interview prep.
 - **Interview Story Bank** (`story_bank.py`) — Accumulates STAR+Reflection stories across all evaluations. 5-10 master stories that answer any behavioral question.
@@ -246,10 +256,18 @@ training_evaluator.py   Course/cert ROI scoring (TAKE/SKIP/TIMEBOX)
 deep_research.py        6-axis deep company research
 cv_template_engine.py   ATS-optimized HTML→PDF CV generation
 pipeline_manager.py     Application lifecycle state machine
+interview_simulator.py  Conversational AI mock interview practice
+offer_war_room.py       Multi-offer comparison + negotiation playbooks
+application_forensics.py Pattern analysis across all applications
+ghost_predictor.py      Ghost probability scoring before applying
+market_pulse.py         Real-time job market intelligence + weekly briefs
+employer_sla_tracker.py Response time tracking per company per stage
+quality_gate.py         Application quality scoring before submit
+career_simulator.py     5-year career path projection + comparison
 tests/                  165 unit tests (state, scoring, salary, dedup, timing, JD tracking, config)
 ```
 
-21,283 lines across 65 Python files and 44 features. Includes 165 unit tests.
+25,993 lines across 73 Python files and 52 features. Includes 165 unit tests.
 
 ## AI Providers
 

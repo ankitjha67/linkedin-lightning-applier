@@ -725,3 +725,68 @@ pipeline_manager:
   enabled: true
   auto_ghost_days: 14            # Auto-mark as ghosted after N days
   enforce_transitions: true      # Enforce valid state transitions
+
+# ═══════════════════════════════════════════════════════════════
+# INTERVIEW SIMULATOR — Conversational AI interview practice
+# ═══════════════════════════════════════════════════════════════
+interview_simulator:
+  enabled: true
+  questions_per_session: 6       # Number of questions per mock interview
+  include_follow_ups: true       # AI asks probing follow-up questions
+
+# ═══════════════════════════════════════════════════════════════
+# OFFER WAR ROOM — Multi-offer comparison & negotiation
+# ═══════════════════════════════════════════════════════════════
+offer_war_room:
+  enabled: true
+  projection_years: 5            # Years for earnings projection
+  default_weights:               # Dimension weights for comparison
+    total_comp: 30
+    growth: 20
+    culture: 15
+    location: 15
+    visa: 10
+    work_life: 10
+
+# ═══════════════════════════════════════════════════════════════
+# APPLICATION FORENSICS — Pattern analysis across applications
+# ═══════════════════════════════════════════════════════════════
+application_forensics:
+  enabled: true
+  min_applications: 20           # Minimum data points before analysis
+
+# ═══════════════════════════════════════════════════════════════
+# GHOST PREDICTOR — Ghost risk scoring before applying
+# ═══════════════════════════════════════════════════════════════
+ghost_predictor:
+  enabled: true
+  warn_threshold: 0.7            # Warn when ghost probability exceeds this
+
+# ═══════════════════════════════════════════════════════════════
+# MARKET PULSE — Real-time job market intelligence
+# ═══════════════════════════════════════════════════════════════
+market_pulse:
+  enabled: true
+  snapshot_interval_days: 7      # How often to capture market snapshots
+
+# ═══════════════════════════════════════════════════════════════
+# EMPLOYER SLA — Response time tracking per company
+# ═══════════════════════════════════════════════════════════════
+employer_sla:
+  enabled: true
+  overdue_multiplier: 1.5        # Flag as overdue at Nx the company's average
+
+# ═══════════════════════════════════════════════════════════════
+# QUALITY GATE — Application quality scoring before submit
+# ═══════════════════════════════════════════════════════════════
+quality_gate:
+  enabled: true
+  min_quality_score: 50          # Minimum quality to proceed (0-100)
+  block_below_threshold: false   # true = block weak apps, false = warn only
+
+# ═══════════════════════════════════════════════════════════════
+# CAREER SIMULATOR — Career path projection & comparison
+# ═══════════════════════════════════════════════════════════════
+career_simulator:
+  enabled: true
+  projection_years: 5            # Years to project forward

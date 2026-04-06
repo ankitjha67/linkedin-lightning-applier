@@ -525,6 +525,123 @@ class State:
                 notes           TEXT DEFAULT '',
                 updated_at      TEXT DEFAULT (datetime('now','localtime'))
             );
+
+            -- Interview Simulator Sessions
+            CREATE TABLE IF NOT EXISTS interview_sessions (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                job_id          TEXT DEFAULT '',
+                company         TEXT DEFAULT '',
+                title           TEXT DEFAULT '',
+                archetype       TEXT DEFAULT '',
+                questions_asked TEXT DEFAULT '[]',
+                responses       TEXT DEFAULT '[]',
+                scores          TEXT DEFAULT '[]',
+                overall_score   REAL DEFAULT 0,
+                feedback        TEXT DEFAULT '',
+                duration_min    REAL DEFAULT 0,
+                session_at      TEXT DEFAULT (datetime('now','localtime'))
+            );
+
+            -- Offer Comparisons
+            CREATE TABLE IF NOT EXISTS offer_comparisons (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                comparison_name TEXT DEFAULT '',
+                offer_ids       TEXT DEFAULT '[]',
+                weights         TEXT DEFAULT '{}',
+                scores          TEXT DEFAULT '{}',
+                recommendation  TEXT DEFAULT '',
+                negotiation_plan TEXT DEFAULT '',
+                created_at      TEXT DEFAULT (datetime('now','localtime'))
+            );
+
+            CREATE TABLE IF NOT EXISTS offers (
+                job_id          TEXT PRIMARY KEY,
+                company         TEXT,
+                title           TEXT,
+                base_salary     REAL DEFAULT 0,
+                bonus           REAL DEFAULT 0,
+                equity          TEXT DEFAULT '',
+                signing_bonus   REAL DEFAULT 0,
+                benefits        TEXT DEFAULT '',
+                visa_support    TEXT DEFAULT '',
+                start_date      TEXT DEFAULT '',
+                location        TEXT DEFAULT '',
+                remote_policy   TEXT DEFAULT '',
+                growth_potential TEXT DEFAULT '',
+                team_size       TEXT DEFAULT '',
+                pros            TEXT DEFAULT '',
+                cons            TEXT DEFAULT '',
+                deadline        TEXT DEFAULT '',
+                received_at     TEXT DEFAULT (datetime('now','localtime'))
+            );
+
+            -- Application Forensics
+            CREATE TABLE IF NOT EXISTS forensics_reports (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                report_type     TEXT DEFAULT '',
+                findings        TEXT DEFAULT '',
+                patterns        TEXT DEFAULT '[]',
+                recommendations TEXT DEFAULT '[]',
+                data_points     INTEGER DEFAULT 0,
+                generated_at    TEXT DEFAULT (datetime('now','localtime'))
+            );
+
+            -- Ghost Predictions
+            CREATE TABLE IF NOT EXISTS ghost_predictions (
+                job_id          TEXT PRIMARY KEY,
+                company         TEXT,
+                title           TEXT,
+                ghost_probability REAL DEFAULT 0,
+                risk_factors    TEXT DEFAULT '[]',
+                predicted_at    TEXT DEFAULT (datetime('now','localtime'))
+            );
+
+            -- Market Pulse
+            CREATE TABLE IF NOT EXISTS market_snapshots (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                role_pattern    TEXT DEFAULT '',
+                location        TEXT DEFAULT '',
+                posting_count   INTEGER DEFAULT 0,
+                avg_salary_min  REAL DEFAULT 0,
+                avg_salary_max  REAL DEFAULT 0,
+                currency        TEXT DEFAULT '',
+                new_companies   TEXT DEFAULT '[]',
+                trend           TEXT DEFAULT 'stable',
+                snapshot_at     TEXT DEFAULT (datetime('now','localtime'))
+            );
+
+            -- Employer Response SLAs
+            CREATE TABLE IF NOT EXISTS employer_sla (
+                company         TEXT,
+                stage           TEXT,
+                avg_days        REAL DEFAULT 0,
+                min_days        REAL DEFAULT 0,
+                max_days        REAL DEFAULT 0,
+                sample_size     INTEGER DEFAULT 0,
+                last_updated    TEXT DEFAULT (datetime('now','localtime')),
+                PRIMARY KEY (company, stage)
+            );
+
+            -- Application Quality Scores
+            CREATE TABLE IF NOT EXISTS quality_scores (
+                job_id          TEXT PRIMARY KEY,
+                resume_match_pct REAL DEFAULT 0,
+                cover_letter_score REAL DEFAULT 0,
+                form_completeness REAL DEFAULT 0,
+                overall_quality REAL DEFAULT 0,
+                issues          TEXT DEFAULT '[]',
+                scored_at       TEXT DEFAULT (datetime('now','localtime'))
+            );
+
+            -- Career Path Simulations
+            CREATE TABLE IF NOT EXISTS career_simulations (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                simulation_name TEXT DEFAULT '',
+                current_role    TEXT DEFAULT '',
+                paths           TEXT DEFAULT '[]',
+                recommendation  TEXT DEFAULT '',
+                simulated_at    TEXT DEFAULT (datetime('now','localtime'))
+            );
         """)
         self.conn.commit()
 
