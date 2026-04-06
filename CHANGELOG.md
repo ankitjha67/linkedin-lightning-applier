@@ -1,5 +1,57 @@
 # Changelog
 
+## v2.4.0 — Novel Intelligence (unique features)
+
+### Added
+
+**8 Novel Features (4,710 lines) — capabilities no other job tool has**
+
+- **Interview Simulator** (`interview_simulator.py`, 461 lines) — Multi-turn conversational mock interviews. Generates role-specific questions (2 behavioral, 2 technical, 1 situational, 1 culture-fit). Scores responses 1-10 on relevance, specificity, structure, and impact. Asks follow-up probes. Tracks improvement across sessions.
+
+- **Offer War Room** (`offer_war_room.py`, 560 lines) — Multi-offer comparison with 6-dimension weighted scoring (total comp 30%, growth 20%, culture 15%, location 15%, visa 10%, work-life 10%). 5-year earnings projections with estimated raises by company type. Per-offer negotiation playbooks with leverage analysis, counter-offer scripts, and walk-away numbers.
+
+- **Application Forensics** (`application_forensics.py`, 542 lines) — Post-mortem pattern analysis across all applications. Analyzes by company type, resume style, timing, match score, recruiter messaging, JD keywords, location, and salary range. AI synthesizes findings into actionable recommendations: "You get 3x more callbacks when your resume leads with metrics."
+
+- **Ghost Predictor** (`ghost_predictor.py`, 450 lines) — Predicts ghost probability (0.0-1.0) before applying. Factors: company historical ghost rate, posting age, JD quality/specificity score, salary transparency, recruiter identification, market saturation. Weighted logistic combination calibrated against actuals.
+
+- **Market Pulse** (`market_pulse.py`, 646 lines) — Real-time job market intelligence. Captures weekly snapshots: posting volume trends, salary trajectories, new company detection, demand heatmaps (role × location). Generates weekly market briefs. Detects layoff signals (reduced postings). Identifies emerging role titles.
+
+- **Employer SLA Tracker** (`employer_sla_tracker.py`, 569 lines) — Tracks response time per company per pipeline stage (avg/min/max days). Predicts expected response dates. Flags overdue applications. Ranks fastest and slowest companies. Auto-learns from response_tracking data.
+
+- **Quality Gate** (`quality_gate.py`, 688 lines) — Pre-submission application quality scoring. Resume-JD keyword overlap %, cover letter specificity/relevance/authenticity, form completeness, match score integration. Detects issues ("Resume doesn't mention Python"). Configurable threshold — warn or block weak applications.
+
+- **Career Path Simulator** (`career_simulator.py`, 619 lines) — Models 5-year career trajectories from competing offers. Projects: title progression, salary trajectory with company-type raises (startup 5-15%, big tech 8-12%, finance 8-20%), equity vesting, promotion probability, skill growth, visa timeline. Side-by-side path comparison with AI recommendation.
+
+**Schema:** 8 new SQLite tables (interview_sessions, offer_comparisons, offers, forensics_reports, ghost_predictions, market_snapshots, employer_sla, quality_scores, career_simulations)
+
+### Stats
+- 73 Python files, 25,993 lines of code, 165 tests, 47+ DB tables, 52 features
+
+---
+
+## v2.3.0 — Career Intelligence (from career-ops)
+
+### Added
+
+**Career Intelligence Modules (8 new, 3,457 lines)**
+- **Job Evaluator** (`job_evaluator.py`, 416 lines) — Structured A-F evaluation: role summary, CV match with gap mitigation strategy, level strategy ("sell senior without lying"), comp research, top 5 CV/LinkedIn changes, STAR+R interview plan.
+- **Story Bank** (`story_bank.py`, 504 lines) — Persistent STAR+Reflection story accumulator. Extracts stories from evaluations, deduplicates, finds best stories for specific interview questions, generates "tell me about yourself" narratives.
+- **Archetype Classifier** (`archetype_classifier.py`, 445 lines) — Classifies jobs into 11 archetypes (backend, frontend, fullstack, data engineer, data scientist, devops, PM, eng manager, AI/ML, security, risk/finance). Keyword + AI classification with confidence scores.
+- **Portfolio Evaluator** (`portfolio_evaluator.py`, 379 lines) — Scores project ideas on 6 weighted dimensions (signal 25%, uniqueness 20%, demo-ability 20%, metrics 15%, time-to-MVP 10%, STAR potential 10%). BUILD/SKIP/PIVOT verdicts with 2-week plans.
+- **Training Evaluator** (`training_evaluator.py`, 384 lines) — Scores courses/certifications on 6 dimensions (alignment, recruiter signal, time/effort, opportunity cost, risks, portfolio output). TAKE/SKIP/TIMEBOX verdicts with weekly deliverables.
+- **Deep Researcher** (`deep_research.py`, 416 lines) — 6-axis company research: AI strategy, recent moves, engineering culture, probable challenges, competitors, candidate angle. Each axis gets a separate AI call for depth.
+- **CV Template Engine** (`cv_template_engine.py`, 531 lines) — ATS-optimized HTML→PDF CV generation. Embedded professional template. Keyword injection from JD. Playwright/weasyprint/fpdf2 fallback chain for PDF rendering.
+- **Pipeline Manager** (`pipeline_manager.py`, 382 lines) — Formal state machine: discovered → evaluated → queued → applied → responded → interviewing → offer → accepted/rejected/withdrawn/ghosted. Enforced transitions, auto-ghosting, priority queue.
+
+**Schema:** 7 new SQLite tables (job_evaluations, story_bank, job_archetypes, portfolio_projects, training_evaluations, deep_research, pipeline_states)
+
+**Config:** 8 new sections with full documentation
+
+### Stats
+- 65 Python files, 21,283 lines of code, 165 tests, 39 database tables, 44 features
+
+---
+
 ## v2.2.0 — Production Hardening
 
 ### Added

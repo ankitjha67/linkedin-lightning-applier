@@ -53,6 +53,26 @@ The bot runs in a continuous loop. Every cycle:
 - **Docker Deployment** — Dockerfile with headless Chrome, docker-compose with volume mounts, health check endpoint.
 - **SaaS Web App** — Flask app with authentication, CSRF protection, job search, salary benchmarks, interview prep viewer.
 
+### Novel Intelligence (8 — unique to this tool)
+- **Interview Simulator** (`interview_simulator.py`) — Conversational AI mock interviews. Multi-turn Q&A with scoring, follow-up probes, improvement tracking across sessions.
+- **Offer War Room** (`offer_war_room.py`) — Multi-offer comparison matrix. 6-dimension scoring weighted by priorities. 5-year comp projections. Per-offer negotiation playbooks.
+- **Application Forensics** (`application_forensics.py`) — Pattern analysis across hundreds of applications. Finds hidden correlations: which resume styles, timing, keywords, company types get callbacks.
+- **Ghost Predictor** (`ghost_predictor.py`) — Predicts ghost probability (0-1) before applying. Factors: company history, posting age, JD quality, salary transparency, recruiter presence.
+- **Market Pulse** (`market_pulse.py`) — Real-time job market intelligence. Posting trends, salary trajectories, new company detection, demand heatmaps, weekly market briefs.
+- **Employer SLA Tracker** (`employer_sla_tracker.py`) — Tracks response time per company per stage. Predicts when to expect responses. Flags overdue applications.
+- **Quality Gate** (`quality_gate.py`) — Scores application quality before submitting. Resume-JD match %, cover letter specificity, form completeness. Blocks weak applications.
+- **Career Path Simulator** (`career_simulator.py`) — Models 5-year career trajectories from competing offers. Comp projections, promotion timelines, skill growth, risk assessment.
+
+### Career Intelligence (8 — from career-ops)
+- **A-F Job Evaluation** (`job_evaluator.py`) — 6-block structured evaluation: role summary, CV match with gap mitigation, level strategy, comp research, personalization plan, STAR+R interview prep.
+- **Interview Story Bank** (`story_bank.py`) — Accumulates STAR+Reflection stories across all evaluations. 5-10 master stories that answer any behavioral question.
+- **Role Archetype Classifier** (`archetype_classifier.py`) — Classifies jobs into archetypes (backend, frontend, data, devops, PM, etc.). Changes which skills to emphasize.
+- **Portfolio Project Evaluator** (`portfolio_evaluator.py`) — Scores project ideas on 6 dimensions (signal, uniqueness, demo-ability, metrics, time-to-MVP, STAR potential). BUILD/SKIP/PIVOT verdicts.
+- **Training/Cert Evaluator** (`training_evaluator.py`) — Scores courses on alignment, recruiter signal, time/effort, opportunity cost, risks, portfolio output. TAKE/SKIP/TIMEBOX verdicts.
+- **Deep Company Research** (`deep_research.py`) — 6-axis research: AI strategy, recent moves, eng culture, challenges, competitors, candidate angle.
+- **ATS CV Template Engine** (`cv_template_engine.py`) — ATS-optimized HTML→PDF CV generation with keyword injection from JD.
+- **Pipeline State Machine** (`pipeline_manager.py`) — Formal lifecycle states (discovered → evaluated → applied → interviewing → offer) with enforced transitions.
+
 ### Core Foundations
 - **AI Form Filling** — 8 LLM providers: OpenAI, Anthropic Claude, Google Gemini, DeepSeek, Groq, Together, Ollama (local), LM Studio (local). Answers cached in SQLite.
 - **Recruiter Tracking** — Names, titles, and LinkedIn URLs from "Meet the hiring team" sections.
@@ -228,10 +248,26 @@ validate_config.py      Startup config validation (11 checks, errors vs warnings
 metrics.py              Prometheus-compatible /metrics endpoint for Grafana
 webapp/                 SaaS web app with auth, CSRF, search, API
 docker/                 Dockerfile, docker-compose, health check
+job_evaluator.py        Structured A-F evaluation per job (6 blocks)
+story_bank.py           Persistent STAR+R interview story accumulator
+archetype_classifier.py Role archetype classification (11 default types)
+portfolio_evaluator.py  Portfolio project scoring (6 dimensions, BUILD/SKIP/PIVOT)
+training_evaluator.py   Course/cert ROI scoring (TAKE/SKIP/TIMEBOX)
+deep_research.py        6-axis deep company research
+cv_template_engine.py   ATS-optimized HTML→PDF CV generation
+pipeline_manager.py     Application lifecycle state machine
+interview_simulator.py  Conversational AI mock interview practice
+offer_war_room.py       Multi-offer comparison + negotiation playbooks
+application_forensics.py Pattern analysis across all applications
+ghost_predictor.py      Ghost probability scoring before applying
+market_pulse.py         Real-time job market intelligence + weekly briefs
+employer_sla_tracker.py Response time tracking per company per stage
+quality_gate.py         Application quality scoring before submit
+career_simulator.py     5-year career path projection + comparison
 tests/                  165 unit tests (state, scoring, salary, dedup, timing, JD tracking, config)
 ```
 
-17,663 lines across 57 Python files and 36 features. Includes 165 unit tests.
+25,993 lines across 73 Python files and 52 features. Includes 165 unit tests.
 
 ## AI Providers
 

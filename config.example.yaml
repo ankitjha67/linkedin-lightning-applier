@@ -666,3 +666,127 @@ metrics:
   enabled: false
   port: 9090                     # Prometheus scrape port
   host: "0.0.0.0"
+
+# ═══════════════════════════════════════════════════════════════
+# JOB EVALUATION — Structured A-F evaluation per job
+# ═══════════════════════════════════════════════════════════════
+job_evaluation:
+  enabled: true
+  auto_evaluate: true            # Auto-evaluate after match scoring
+  min_score_to_evaluate: 60      # Only evaluate jobs scoring above this
+  save_reports: true             # Save full reports to data/reports/
+
+# ═══════════════════════════════════════════════════════════════
+# STORY BANK — Persistent STAR+R interview stories
+# ═══════════════════════════════════════════════════════════════
+story_bank:
+  enabled: true
+  auto_extract: true             # Auto-extract stories from evaluations
+  max_stories: 50                # Cap total stories
+
+# ═══════════════════════════════════════════════════════════════
+# ARCHETYPE CLASSIFIER — Job type classification
+# ═══════════════════════════════════════════════════════════════
+archetype_classifier:
+  enabled: true
+  custom_archetypes: {}          # Override/extend default archetypes
+
+# ═══════════════════════════════════════════════════════════════
+# PORTFOLIO EVALUATOR — Score project ideas for job search
+# ═══════════════════════════════════════════════════════════════
+portfolio_evaluator:
+  enabled: true
+
+# ═══════════════════════════════════════════════════════════════
+# TRAINING EVALUATOR — Course/cert ROI scoring
+# ═══════════════════════════════════════════════════════════════
+training_evaluator:
+  enabled: true
+
+# ═══════════════════════════════════════════════════════════════
+# DEEP RESEARCH — 6-axis company intelligence
+# ═══════════════════════════════════════════════════════════════
+deep_research:
+  enabled: true
+  auto_research: false           # Auto-research after evaluation (uses many AI tokens)
+
+# ═══════════════════════════════════════════════════════════════
+# CV TEMPLATE — ATS-optimized HTML→PDF CV generation
+# ═══════════════════════════════════════════════════════════════
+cv_template:
+  enabled: true
+  output_dir: "data/cv_output"
+  inject_keywords: true          # Auto-inject JD keywords into CV
+
+# ═══════════════════════════════════════════════════════════════
+# PIPELINE MANAGER — Application lifecycle state machine
+# ═══════════════════════════════════════════════════════════════
+pipeline_manager:
+  enabled: true
+  auto_ghost_days: 14            # Auto-mark as ghosted after N days
+  enforce_transitions: true      # Enforce valid state transitions
+
+# ═══════════════════════════════════════════════════════════════
+# INTERVIEW SIMULATOR — Conversational AI interview practice
+# ═══════════════════════════════════════════════════════════════
+interview_simulator:
+  enabled: true
+  questions_per_session: 6       # Number of questions per mock interview
+  include_follow_ups: true       # AI asks probing follow-up questions
+
+# ═══════════════════════════════════════════════════════════════
+# OFFER WAR ROOM — Multi-offer comparison & negotiation
+# ═══════════════════════════════════════════════════════════════
+offer_war_room:
+  enabled: true
+  projection_years: 5            # Years for earnings projection
+  default_weights:               # Dimension weights for comparison
+    total_comp: 30
+    growth: 20
+    culture: 15
+    location: 15
+    visa: 10
+    work_life: 10
+
+# ═══════════════════════════════════════════════════════════════
+# APPLICATION FORENSICS — Pattern analysis across applications
+# ═══════════════════════════════════════════════════════════════
+application_forensics:
+  enabled: true
+  min_applications: 20           # Minimum data points before analysis
+
+# ═══════════════════════════════════════════════════════════════
+# GHOST PREDICTOR — Ghost risk scoring before applying
+# ═══════════════════════════════════════════════════════════════
+ghost_predictor:
+  enabled: true
+  warn_threshold: 0.7            # Warn when ghost probability exceeds this
+
+# ═══════════════════════════════════════════════════════════════
+# MARKET PULSE — Real-time job market intelligence
+# ═══════════════════════════════════════════════════════════════
+market_pulse:
+  enabled: true
+  snapshot_interval_days: 7      # How often to capture market snapshots
+
+# ═══════════════════════════════════════════════════════════════
+# EMPLOYER SLA — Response time tracking per company
+# ═══════════════════════════════════════════════════════════════
+employer_sla:
+  enabled: true
+  overdue_multiplier: 1.5        # Flag as overdue at Nx the company's average
+
+# ═══════════════════════════════════════════════════════════════
+# QUALITY GATE — Application quality scoring before submit
+# ═══════════════════════════════════════════════════════════════
+quality_gate:
+  enabled: true
+  min_quality_score: 50          # Minimum quality to proceed (0-100)
+  block_below_threshold: false   # true = block weak apps, false = warn only
+
+# ═══════════════════════════════════════════════════════════════
+# CAREER SIMULATOR — Career path projection & comparison
+# ═══════════════════════════════════════════════════════════════
+career_simulator:
+  enabled: true
+  projection_years: 5            # Years to project forward
