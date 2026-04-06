@@ -303,6 +303,11 @@ try:
 except ImportError:
     CareerSimulator = None
 
+try:
+    from plugin_api import PluginLoader
+except ImportError:
+    PluginLoader = None
+
 
 # ===================================================================
 shutdown_requested = False
@@ -924,6 +929,18 @@ def run_forever(config_path: str):
     checkpoint = CheckpointManager(cfg) if CheckpointManager else None
     rate_limit = RateLimiter(cfg) if RateLimiter else None
     metrics_collector = MetricsCollector(cfg, state) if MetricsCollector else None
+
+    # Load plugins
+    plugin_registry = None
+    if PluginLoader:
+        try:
+            loader = PluginLoader(cfg)
+            plugin_registry = loader.load_all()
+            loaded = plugin_registry.get_loaded_plugins()
+            if loaded:
+                features.append(f"Plugins ({len(loaded)})")
+        except Exception as e:
+            log.debug(f"Plugin loading failed: {e}")
 
     # Validate configuration on startup
     if ConfigValidator:

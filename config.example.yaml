@@ -790,3 +790,10 @@ quality_gate:
 career_simulator:
   enabled: true
   projection_years: 5            # Years to project forward
+
+# ═══════════════════════════════════════════════════════════════
+# PLUGINS — Community extensions
+# ═══════════════════════════════════════════════════════════════
+plugins:
+  enabled: true
+  disabled: []                   # List of plugin names to skip loading
