@@ -1,112 +1,48 @@
 """
-Career Simulator — Multi-Path Career Projection and Comparison Engine.
+Career Path Projection Simulator.
 
-Projects multiple career paths side-by-side over 1, 3, and 5-year horizons.
-For each path, estimates:
-  - Title progression and promotion timeline
-  - Salary trajectory with company-type-specific raise rates
-  - Total compensation (base + bonus + equity vesting)
-  - Growth opportunities and risk factors
-
-Raise rate benchmarks by company type:
-  - Startup:    5-15% (high variance, equity-heavy)
-  - Big Tech:   8-12% (structured bands, RSU refreshers)
-  - Finance:    8-20% (bonus-heavy, volatile)
-  - Consulting: 10-18% (up-or-out, clear levels)
-  - Enterprise: 3-7% (stable, slower growth)
-
-Persists simulations in career_simulations table for later retrieval.
+Models different career trajectories from current offers and roles.
+Projects title progression, salary trajectory, promotion timelines,
+skill acquisition, and lifestyle factors over 1-5 year horizons.
+Compares paths side-by-side with AI-powered recommendations.
 """
 
 import json
 import logging
-import uuid
-from datetime import datetime, timezone
+import re
+from datetime import datetime
 from typing import Optional
 
 log = logging.getLogger("lla.career_simulator")
 
-# ---------------------------------------------------------------------------
-# Prompt templates
-# ---------------------------------------------------------------------------
-
-SIMULATION_SYSTEM = """You are a career trajectory analyst.
-Given multiple career paths with offer details, project each path over 5 years.
-Return ONLY valid JSON — a list of path projections:
-[
-  {
-    "path_label": "string",
-    "year_1": {"title": "...", "base": N, "bonus": N, "equity": N, "total_comp": N},
-    "year_3": {"title": "...", "base": N, "bonus": N, "equity": N, "total_comp": N},
-    "year_5": {"title": "...", "base": N, "bonus": N, "equity": N, "total_comp": N},
-    "promotion_timeline": "string describing expected promotions",
-    "growth_score": 8,
-    "risk_score": 4,
-    "lifestyle_score": 7
-  }
-]
-Be realistic based on industry norms. Account for vesting cliffs."""
-
-RECOMMENDATION_SYSTEM = """You are a senior career advisor.
-Given multi-path simulation results, recommend the best path.
-Return ONLY valid JSON:
-{
-  "recommended_path": "path label",
-  "reasoning": "3-4 sentence explanation weighing comp, growth, risk, and lifestyle",
-  "trade_offs": ["key trade-off 1", "key trade-off 2", "key trade-off 3"],
-  "risk_warning": "primary risk for the recommended path",
-  "alternative": "second-best path and when it would be preferred"
-}"""
-
-# Raise rate ranges by company type (annual %)
-RAISE_RATES = {
-    "startup":    {"min": 5, "max": 15, "typical": 10, "equity_growth": 0.20},
-    "big_tech":   {"min": 8, "max": 12, "typical": 10, "equity_growth": 0.15},
-    "finance":    {"min": 8, "max": 20, "typical": 12, "equity_growth": 0.05},
-    "consulting": {"min": 10, "max": 18, "typical": 14, "equity_growth": 0.02},
-    "enterprise": {"min": 3, "max": 7, "typical": 5, "equity_growth": 0.08},
-    "agency":     {"min": 3, "max": 8, "typical": 5, "equity_growth": 0.02},
-    "other":      {"min": 4, "max": 10, "typical": 6, "equity_growth": 0.05},
+# Raise estimate ranges by company type and role level
+RAISE_RANGES = {
+    "startup": {"junior": (0.05, 0.12), "mid": (0.08, 0.15), "senior": (0.06, 0.12)},
+    "big_tech": {"junior": (0.08, 0.12), "mid": (0.08, 0.12), "senior": (0.06, 0.10)},
+    "consulting": {"junior": (0.10, 0.15), "mid": (0.10, 0.15), "senior": (0.08, 0.12)},
+    "finance": {"junior": (0.08, 0.15), "mid": (0.10, 0.20), "senior": (0.08, 0.18)},
+    "corporate": {"junior": (0.03, 0.06), "mid": (0.04, 0.08), "senior": (0.03, 0.06)},
+    "government": {"junior": (0.02, 0.04), "mid": (0.02, 0.04), "senior": (0.02, 0.03)},
+    "ngo": {"junior": (0.02, 0.05), "mid": (0.03, 0.06), "senior": (0.02, 0.04)},
 }
 
-# Typical promotion timelines (years between promotions)
-PROMO_CADENCE = {
-    "startup":    1.5,
-    "big_tech":   2.0,
-    "finance":    2.5,
-    "consulting": 2.0,
-    "enterprise": 3.0,
-    "agency":     2.5,
-    "other":      2.5,
+# Typical promotion timelines (years to next level)
+PROMOTION_TIMELINES = {
+    "startup": {"junior": 1.5, "mid": 2.0, "senior": 2.5, "lead": 3.0, "director": 4.0},
+    "big_tech": {"junior": 2.0, "mid": 2.5, "senior": 3.0, "lead": 3.5, "director": 4.0},
+    "consulting": {"junior": 2.0, "mid": 2.0, "senior": 2.5, "lead": 3.0, "director": 3.5},
+    "finance": {"junior": 2.0, "mid": 2.5, "senior": 3.0, "lead": 3.0, "director": 4.0},
+    "corporate": {"junior": 2.5, "mid": 3.0, "senior": 3.5, "lead": 4.0, "director": 5.0},
+    "government": {"junior": 3.0, "mid": 3.5, "senior": 4.0, "lead": 5.0, "director": 6.0},
+    "ngo": {"junior": 2.5, "mid": 3.0, "senior": 3.5, "lead": 4.0, "director": 5.0},
 }
 
-# Title progression templates
-TITLE_LADDERS = {
-    "engineering": [
-        "Software Engineer", "Senior Software Engineer",
-        "Staff Engineer", "Principal Engineer", "Distinguished Engineer",
-    ],
-    "data": [
-        "Data Scientist", "Senior Data Scientist",
-        "Staff Data Scientist", "Principal Data Scientist", "Head of Data",
-    ],
-    "product": [
-        "Product Manager", "Senior PM",
-        "Group PM", "Director of Product", "VP Product",
-    ],
-    "design": [
-        "Designer", "Senior Designer",
-        "Staff Designer", "Design Lead", "Head of Design",
-    ],
-    "general": [
-        "IC", "Senior IC",
-        "Lead", "Manager", "Director",
-    ],
-}
+# Title progression ladder
+TITLE_LADDER = ["junior", "mid", "senior", "lead", "director", "vp", "c-level"]
 
 
 class CareerSimulator:
-    """Multi-path career projection and comparison engine."""
+    """Model and compare career trajectories from offers and roles."""
 
     def __init__(self, ai, cfg: dict, state):
         self.ai = ai
@@ -115,505 +51,706 @@ class CareerSimulator:
         cs_cfg = cfg.get("career_simulator", {})
         self.enabled = cs_cfg.get("enabled", False)
         self.projection_years = cs_cfg.get("projection_years", 5)
+        self.include_equity = cs_cfg.get("include_equity", True)
+        self.target_skills = cs_cfg.get("target_skills", [])
 
     # ------------------------------------------------------------------
-    # Public API
+    # Public: simulate
     # ------------------------------------------------------------------
 
-    def simulate(self, paths: list) -> Optional[dict]:
-        """Project multiple career paths and compare side-by-side.
+    def simulate(self, paths: list, simulation_name: str = "",
+                 current_role: str = "") -> dict:
+        """
+        Run projections for multiple career paths.
 
         Args:
-            paths: list of dicts, each with keys:
-                - label: display name for the path (e.g. "Google SWE")
-                - job_id: optional, to pull offer data from DB
-                - company: company name
-                - title: job title
-                - company_type: startup|big_tech|finance|consulting|enterprise
-                - base_salary: starting base
-                - bonus: annual bonus
-                - equity: equity package description
-                - signing_bonus: one-time signing bonus
-                - domain: engineering|data|product|design|general
+            paths: list of offer dicts, each with keys like:
+                   company, title, base_salary, bonus, equity,
+                   location, company_type, industry
+            simulation_name: optional label for this simulation
+            current_role: the user's current role for context
 
-        Returns:
-            dict with simulation_id, per-path projections, and comparison
+        Returns dict with simulation_id, projections per path,
+        and overall comparison.
         """
         if not self.enabled:
-            log.debug("CareerSimulator disabled; skipping simulation")
-            return None
+            log.debug("CareerSimulator disabled")
+            return {}
 
-        if not paths or len(paths) < 1:
+        if not paths:
             log.warning("No paths provided for simulation")
-            return None
+            return {}
 
-        log.info("Running career simulation with %d paths", len(paths))
+        log.info(
+            f"Simulating {len(paths)} career paths "
+            f"(name={simulation_name or 'unnamed'})"
+        )
 
-        # Enrich paths from offers table if job_id provided
-        enriched = []
-        for p in paths:
-            enriched.append(self._enrich_path(p))
-
-        # Project each path
         projections = []
-        for path in enriched:
-            proj = self._project_path(path, years=self.projection_years)
-            projections.append(proj)
+        for i, offer in enumerate(paths):
+            label = offer.get("company", f"Path {i + 1}")
+            log.info(f"  Projecting path: {label} — {offer.get('title', '?')}")
 
-        # AI-enhanced projections if available
-        ai_projections = self._ai_simulate(enriched)
-        if ai_projections:
-            for i, ai_proj in enumerate(ai_projections):
-                if i < len(projections):
-                    projections[i]["ai_insights"] = ai_proj
+            projection = self._project_path(
+                offer, years=self.projection_years
+            )
+            projection["path_index"] = i
+            projection["label"] = label
+            projections.append(projection)
 
-        sim_id = str(uuid.uuid4())[:12]
-        simulation_name = " vs ".join(p.get("label", p.get("company", "?"))
-                                       for p in enriched[:4])
+        simulation_name = simulation_name or f"sim_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+
+        # Persist
+        simulation_id = self._save_simulation(
+            simulation_name, current_role, projections
+        )
 
         result = {
-            "simulation_id": sim_id,
+            "simulation_id": simulation_id,
             "simulation_name": simulation_name,
-            "paths": projections,
-            "comparison": self._build_comparison_table(projections),
-            "simulated_at": datetime.now(timezone.utc).isoformat(),
+            "current_role": current_role,
+            "paths_count": len(paths),
+            "projections": projections,
         }
 
-        # Persist
-        self._save_simulation(sim_id, simulation_name, enriched, result)
-
+        log.info(f"Simulation complete: id={simulation_id}")
         return result
 
-    def compare_paths(self, simulation_id: str) -> Optional[dict]:
-        """Load a simulation and return 1yr/3yr/5yr comparison table."""
-        if not self.enabled:
-            return None
-
-        sim = self._load_simulation(simulation_id)
-        if not sim:
-            log.warning("Simulation %s not found", simulation_id)
-            return None
-
-        paths_data = json.loads(sim.get("paths", "[]"))
-        if not paths_data:
-            return {"simulation_id": simulation_id, "error": "No path data found"}
-
-        # Build comparison at each milestone
-        milestones = {}
-        for year in [1, 3, 5]:
-            year_data = []
-            for path in paths_data:
-                yearly = path.get("yearly_projection", [])
-                yr_entry = next((y for y in yearly if y.get("year") == year), None)
-                if yr_entry:
-                    year_data.append({
-                        "label": path.get("label", "Unknown"),
-                        "title": yr_entry.get("projected_title", ""),
-                        "total_comp": yr_entry.get("total_comp", 0),
-                        "base": yr_entry.get("base", 0),
-                        "cumulative": yr_entry.get("cumulative", 0),
-                    })
-            milestones[f"year_{year}"] = year_data
-
-        return {
-            "simulation_id": simulation_id,
-            "simulation_name": sim.get("simulation_name", ""),
-            "milestones": milestones,
-        }
-
-    def get_recommendation(self, simulation_id: str) -> Optional[dict]:
-        """AI-powered recommendation weighing comp, growth, risk, lifestyle."""
-        if not self.enabled:
-            return None
-
-        sim = self._load_simulation(simulation_id)
-        if not sim:
-            return None
-
-        paths_data = json.loads(sim.get("paths", "[]"))
-        recommendation_text = sim.get("recommendation", "")
-
-        # If already computed, return it
-        if recommendation_text:
-            try:
-                return json.loads(recommendation_text)
-            except (json.JSONDecodeError, TypeError):
-                pass
-
-        # Generate via AI
-        rec = self._ai_recommend(paths_data)
-        if not rec:
-            rec = self._fallback_recommendation(paths_data)
-
-        # Persist
-        try:
-            self.state.conn.execute(
-                "UPDATE career_simulations SET recommendation = ? WHERE id = ?",
-                (json.dumps(rec), simulation_id),
-            )
-            self.state.conn.commit()
-        except Exception as exc:
-            log.error("Failed to save recommendation: %s", exc)
-
-        rec["simulation_id"] = simulation_id
-        return rec
-
     # ------------------------------------------------------------------
-    # Path projection
+    # Internal: _project_path
     # ------------------------------------------------------------------
 
-    def _project_path(self, path: dict, years: int = 5) -> dict:
-        """Project a single career path over N years.
-
-        Returns yearly breakdown with title progression, comp trajectory,
-        and cumulative earnings.
+    def _project_path(self, offer: dict, years: int = 5) -> dict:
         """
-        company_type = path.get("company_type", "other")
-        domain = path.get("domain", "general")
-        base = path.get("base_salary", 0) or 0
-        bonus = path.get("bonus", 0) or 0
-        equity_str = path.get("equity", "")
-        signing = path.get("signing_bonus", 0) or 0
+        Project a single career path over N years.
 
-        raise_rate = self._estimate_annual_raise(company_type) / 100.0
-        annual_equity = self._parse_annual_equity(equity_str)
-        equity_growth = RAISE_RATES.get(company_type, RAISE_RATES["other"])["equity_growth"]
-        promo_cadence = PROMO_CADENCE.get(company_type, 2.5)
-        title_ladder = TITLE_LADDERS.get(domain, TITLE_LADDERS["general"])
+        Estimates title progression, salary trajectory, promotion
+        timeline, total comp, skill growth, and risk factors.
+        """
+        company = offer.get("company", "Unknown")
+        title = offer.get("title", "Unknown")
+        base_salary = offer.get("base_salary", 0)
+        bonus = offer.get("bonus", 0)
+        equity = offer.get("equity", "")
+        location = offer.get("location", "")
+        company_type = offer.get("company_type", "corporate")
+        industry = offer.get("industry", "")
 
-        # Find starting position in ladder
-        current_title = path.get("title", "")
-        start_idx = self._find_title_index(current_title, title_ladder)
+        role_level = self._classify_role_level(title)
 
+        # Year-by-year projection
         yearly = []
-        cumulative = 0
-        current_base = base
-        current_bonus = bonus
-        current_equity = annual_equity
-        current_title_idx = start_idx
+        current_salary = base_salary
+        current_title = title
+        current_level = role_level
+        cumulative_comp = 0
 
-        for yr in range(1, years + 1):
-            # Promotion check
-            if yr > 1 and (yr - 1) % max(1, int(promo_cadence)) == 0:
-                if current_title_idx + 1 < len(title_ladder):
-                    current_title_idx += 1
+        for year in range(1, years + 1):
+            # Estimate raise
+            raise_low, raise_high = self._estimate_annual_raise(
+                company_type, current_level
+            )
+            avg_raise = (raise_low + raise_high) / 2
+            current_salary = current_salary * (1 + avg_raise)
+
+            # Check promotion
+            promo_years = self._estimate_promotion_timeline(
+                company_type, current_level
+            )
+            if year >= promo_years and current_level in TITLE_LADDER:
+                idx = TITLE_LADDER.index(current_level)
+                if idx + 1 < len(TITLE_LADDER):
+                    current_level = TITLE_LADDER[idx + 1]
+                    current_title = self._project_title(
+                        title, current_level, company_type
+                    )
                     # Promotion bump
-                    current_base = round(current_base * 1.15)
-                    current_bonus = round(current_bonus * 1.20)
+                    current_salary *= 1.15
 
-            # Annual raises (non-promotion years)
-            if yr > 1 and not ((yr - 1) % max(1, int(promo_cadence)) == 0):
-                current_base = round(current_base * (1 + raise_rate))
-                current_bonus = round(current_bonus * (1 + raise_rate * 0.7))
-
-            # Equity: cliff in year 1, then vesting + refreshers
-            if yr == 1:
-                yr_equity = 0  # Cliff year
-            elif yr <= 4:
-                yr_equity = current_equity
-                current_equity = round(current_equity * (1 + equity_growth))
-            else:
-                yr_equity = round(current_equity * 0.6)  # Refresher grants only
-
-            yr_signing = signing if yr == 1 else 0
-            total = current_base + current_bonus + yr_equity + yr_signing
-            cumulative += total
-
-            projected_title = title_ladder[current_title_idx] if current_title_idx < len(title_ladder) else current_title
+            # Total comp
+            year_bonus = current_salary * (bonus / base_salary if base_salary else 0)
+            year_equity = self._estimate_equity_value(equity, year, company_type)
+            total_comp = current_salary + year_bonus + year_equity
+            cumulative_comp += total_comp
 
             yearly.append({
-                "year": yr,
-                "projected_title": projected_title,
-                "base": current_base,
-                "bonus": current_bonus,
-                "equity": yr_equity,
-                "signing": yr_signing,
-                "total_comp": total,
-                "cumulative": cumulative,
+                "year": year,
+                "title": current_title,
+                "level": current_level,
+                "base_salary": round(current_salary),
+                "bonus": round(year_bonus),
+                "equity_value": round(year_equity),
+                "total_comp": round(total_comp),
+                "cumulative_comp": round(cumulative_comp),
             })
 
+        # Skill growth assessment
+        skills = self._assess_skill_growth(offer, self.target_skills)
+
+        # Risk assessment
+        risks = self._assess_risks(offer)
+
+        # Visa timeline if applicable
+        visa = self._assess_visa_timeline(offer)
+
         return {
-            "label": path.get("label", path.get("company", "Unknown")),
-            "company": path.get("company", ""),
+            "company": company,
+            "title": title,
+            "starting_salary": base_salary,
+            "location": location,
             "company_type": company_type,
-            "starting_title": path.get("title", ""),
-            "starting_base": base,
-            "yearly_projection": yearly,
-            "total_5yr_earnings": cumulative,
-            "final_title": yearly[-1]["projected_title"] if yearly else current_title,
-            "final_base": yearly[-1]["base"] if yearly else base,
-            "promotions_expected": current_title_idx - start_idx,
+            "industry": industry,
+            "yearly_projections": yearly,
+            "total_5yr_comp": round(cumulative_comp),
+            "final_title": yearly[-1]["title"] if yearly else title,
+            "final_salary": yearly[-1]["base_salary"] if yearly else base_salary,
+            "skills_gained": skills,
+            "risks": risks,
+            "visa_timeline": visa,
         }
 
-    def _estimate_annual_raise(self, company_type: str) -> float:
-        """Return typical annual raise percentage for a company type.
+    # ------------------------------------------------------------------
+    # Internal: _estimate_annual_raise
+    # ------------------------------------------------------------------
 
-        startup: 5-15%, big_tech: 8-12%, finance: 8-20%,
-        consulting: 10-18%, enterprise: 3-7%
+    def _estimate_annual_raise(self, company_type: str,
+                                role_level: str) -> tuple:
         """
-        rates = RAISE_RATES.get(company_type, RAISE_RATES["other"])
-        return rates["typical"]
+        Estimate annual raise range based on company type and role level.
 
-    def _calculate_total_comp(self, path: dict, years: int) -> float:
-        """Calculate cumulative total compensation over N years."""
-        proj = self._project_path(path, years=years)
-        return proj.get("total_5yr_earnings", 0)
+        Returns (low_pct, high_pct) as decimals, e.g. (0.05, 0.15).
+        """
+        company_type = company_type.lower().replace(" ", "_")
+        ranges = RAISE_RANGES.get(company_type, RAISE_RANGES["corporate"])
+        return ranges.get(role_level, ranges.get("mid", (0.04, 0.08)))
 
     # ------------------------------------------------------------------
-    # Comparison and recommendation
+    # Internal: _estimate_promotion_timeline
     # ------------------------------------------------------------------
 
-    def _build_comparison_table(self, projections: list) -> dict:
-        """Build a side-by-side comparison at 1yr, 3yr, 5yr milestones."""
-        table = {}
-        for milestone in [1, 3, 5]:
-            entries = []
-            for proj in projections:
-                yearly = proj.get("yearly_projection", [])
-                yr_data = next((y for y in yearly if y.get("year") == milestone), None)
-                if yr_data:
-                    entries.append({
-                        "label": proj.get("label", "Unknown"),
-                        "title": yr_data.get("projected_title", ""),
-                        "total_comp": yr_data.get("total_comp", 0),
-                        "cumulative": yr_data.get("cumulative", 0),
-                    })
-            table[f"year_{milestone}"] = entries
+    def _estimate_promotion_timeline(self, company_type: str,
+                                      current_level: str) -> float:
+        """
+        Estimate years to next promotion based on company type and level.
 
-        # Determine winner at each milestone
-        for key, entries in table.items():
-            if entries:
-                best = max(entries, key=lambda e: e.get("total_comp", 0))
-                for e in entries:
-                    e["is_top"] = (e["label"] == best["label"])
+        If AI is available, can refine the estimate with industry context.
+        """
+        company_type = company_type.lower().replace(" ", "_")
+        timelines = PROMOTION_TIMELINES.get(
+            company_type, PROMOTION_TIMELINES["corporate"]
+        )
+        return timelines.get(current_level, 3.0)
 
-        return table
+    # ------------------------------------------------------------------
+    # Internal: _calculate_total_comp_over_time
+    # ------------------------------------------------------------------
 
-    def _ai_simulate(self, paths: list) -> Optional[list]:
-        """Use AI for richer career projections."""
-        if not self.ai or not self.ai.enabled:
-            return None
+    def _calculate_total_comp_over_time(self, offer: dict,
+                                         years: int = 5) -> list:
+        """
+        Compute total compensation for each year including base,
+        bonus, and equity vesting.
+        """
+        projection = self._project_path(offer, years)
+        return projection.get("yearly_projections", [])
 
-        paths_text = []
-        for p in paths:
-            paths_text.append(
-                f"Path: {p.get('label', p.get('company', '?'))}\n"
-                f"  Company: {p.get('company', 'N/A')} ({p.get('company_type', 'unknown')})\n"
-                f"  Title: {p.get('title', 'N/A')}\n"
-                f"  Base: ${p.get('base_salary', 0):,.0f}, Bonus: ${p.get('bonus', 0):,.0f}\n"
-                f"  Equity: {p.get('equity', 'N/A')}\n"
-                f"  Domain: {p.get('domain', 'general')}"
+    # ------------------------------------------------------------------
+    # Internal: _assess_visa_timeline
+    # ------------------------------------------------------------------
+
+    def _assess_visa_timeline(self, offer: dict) -> dict:
+        """
+        For international moves, estimate visa processing time and impact.
+
+        Checks offer for visa_support field and infers timeline.
+        """
+        visa_support = offer.get("visa_support", "")
+        location = offer.get("location", "")
+
+        if not visa_support:
+            return {"required": False, "detail": "No visa information provided"}
+
+        visa_lower = visa_support.lower()
+
+        # Rough processing time estimates
+        if "tier 2" in visa_lower or "skilled worker" in visa_lower:
+            return {
+                "required": True,
+                "type": "Skilled Worker Visa (UK)",
+                "processing_weeks": "3-8",
+                "detail": "UK Skilled Worker visa typically 3-8 weeks processing.",
+                "risk": "Employer must be licensed sponsor.",
+            }
+        elif "h1b" in visa_lower or "h-1b" in visa_lower:
+            return {
+                "required": True,
+                "type": "H-1B (US)",
+                "processing_weeks": "12-26 (lottery dependent)",
+                "detail": (
+                    "H-1B requires lottery selection (April). "
+                    "Premium processing available for faster adjudication."
+                ),
+                "risk": "Lottery-based, ~30% selection rate.",
+            }
+        elif "no" in visa_lower or "not" in visa_lower:
+            return {
+                "required": True,
+                "type": "Not provided",
+                "processing_weeks": "N/A",
+                "detail": "Company does not offer visa sponsorship.",
+                "risk": "High — must have independent work authorization.",
+            }
+        else:
+            return {
+                "required": True,
+                "type": visa_support,
+                "processing_weeks": "varies",
+                "detail": f"Visa type: {visa_support}. Timeline varies.",
+                "risk": "Confirm processing timeline with employer.",
+            }
+
+    # ------------------------------------------------------------------
+    # Internal: _assess_skill_growth
+    # ------------------------------------------------------------------
+
+    def _assess_skill_growth(self, offer: dict,
+                              target_skills: list) -> list:
+        """
+        Assess which skills a role will develop, aligned against
+        the user's target skill list.
+        """
+        title = offer.get("title", "").lower()
+        company_type = offer.get("company_type", "").lower()
+        industry = offer.get("industry", "").lower()
+        description = offer.get("description", "").lower()
+
+        skills_map = {
+            "startup": [
+                "building from scratch", "wearing multiple hats",
+                "hiring and team building", "rapid iteration",
+                "stakeholder management", "fundraising exposure",
+            ],
+            "big_tech": [
+                "scale engineering", "system design",
+                "cross-team collaboration", "data-driven decisions",
+                "mentoring", "process optimization",
+            ],
+            "consulting": [
+                "client management", "rapid problem solving",
+                "presentation skills", "industry breadth",
+                "project management", "analytical frameworks",
+            ],
+            "finance": [
+                "risk modeling", "regulatory knowledge",
+                "quantitative analysis", "stakeholder management",
+                "attention to detail", "high-pressure decision making",
+            ],
+        }
+
+        inferred_skills = skills_map.get(company_type, [
+            "domain expertise", "professional development",
+            "collaboration", "problem solving",
+        ])
+
+        # Check title for role-specific skills
+        if "manager" in title or "lead" in title or "head" in title:
+            inferred_skills.extend(["people management", "strategic planning"])
+        if "data" in title or "analyst" in title:
+            inferred_skills.extend(["data analysis", "SQL", "visualization"])
+        if "engineer" in title or "developer" in title:
+            inferred_skills.extend(["technical architecture", "code review"])
+
+        # Cross-reference with target skills
+        matched_targets = []
+        for skill in target_skills:
+            skill_lower = skill.lower()
+            if any(skill_lower in s for s in inferred_skills):
+                matched_targets.append(skill)
+            elif description and skill_lower in description:
+                matched_targets.append(skill)
+
+        return list(dict.fromkeys(inferred_skills[:8] + matched_targets))
+
+    # ------------------------------------------------------------------
+    # Internal: _assess_risks
+    # ------------------------------------------------------------------
+
+    def _assess_risks(self, offer: dict) -> list:
+        """Identify risk factors for a career path."""
+        risks = []
+        company_type = offer.get("company_type", "").lower()
+        equity = offer.get("equity", "")
+
+        if company_type == "startup":
+            risks.append("Startup failure risk — equity could be worthless")
+            risks.append("Potential for high hours and burnout")
+            risks.append("Less structured career progression")
+
+        if equity and "%" in str(equity):
+            risks.append("Equity value highly uncertain until exit event")
+
+        visa = offer.get("visa_support", "")
+        if visa:
+            risks.append("Visa dependency — tied to employer for immigration status")
+
+        base = offer.get("base_salary", 0)
+        if base and base < 50000:
+            risks.append("Below-market base salary — validate with benchmarks")
+
+        location = offer.get("location", "").lower()
+        if any(city in location for city in ["san francisco", "new york", "london", "zurich"]):
+            risks.append("High cost-of-living location — adjust for purchasing power")
+
+        return risks or ["No significant risks identified"]
+
+    # ------------------------------------------------------------------
+    # Internal: helpers
+    # ------------------------------------------------------------------
+
+    def _classify_role_level(self, title: str) -> str:
+        """Classify a job title into a level on the career ladder."""
+        title_lower = title.lower()
+
+        if any(k in title_lower for k in ["intern", "graduate", "trainee"]):
+            return "junior"
+        if any(k in title_lower for k in ["junior", "associate", "entry"]):
+            return "junior"
+        if any(k in title_lower for k in ["senior", "sr.", "sr ", "iii"]):
+            return "senior"
+        if any(k in title_lower for k in ["lead", "principal", "staff"]):
+            return "lead"
+        if any(k in title_lower for k in ["director", "head of"]):
+            return "director"
+        if any(k in title_lower for k in ["vp", "vice president"]):
+            return "vp"
+        if any(k in title_lower for k in ["cto", "ceo", "cfo", "coo", "chief"]):
+            return "c-level"
+        return "mid"
+
+    def _project_title(self, original_title: str, new_level: str,
+                       company_type: str) -> str:
+        """Generate a projected title based on level progression."""
+        # Extract the core role from the original title
+        core_patterns = [
+            r"(?:junior|senior|lead|principal|staff|head of|director of)\s*",
+            r"\s*(?:i{1,3}|iv|v)$",
+        ]
+        core = original_title
+        for pattern in core_patterns:
+            core = re.sub(pattern, "", core, flags=re.IGNORECASE).strip()
+
+        level_prefixes = {
+            "junior": "Junior",
+            "mid": "",
+            "senior": "Senior",
+            "lead": "Lead",
+            "director": "Director of",
+            "vp": "VP of",
+            "c-level": "Head of",
+        }
+        prefix = level_prefixes.get(new_level, "")
+        if prefix:
+            return f"{prefix} {core}"
+        return core
+
+    def _estimate_equity_value(self, equity: str, year: int,
+                                company_type: str) -> float:
+        """
+        Rough estimate of annual equity value based on vesting schedule.
+
+        Standard 4-year vest with 1-year cliff.
+        """
+        if not equity:
+            return 0.0
+
+        # Try to parse a monetary value from equity string
+        numbers = re.findall(r"[\d,]+", str(equity).replace(",", ""))
+        if not numbers:
+            return 0.0
+
+        try:
+            total_equity = float(numbers[0])
+        except (ValueError, IndexError):
+            return 0.0
+
+        # 4-year vesting, 1-year cliff
+        if year < 1:
+            return 0.0
+        elif year == 1:
+            return total_equity * 0.25  # Cliff vest
+        elif year <= 4:
+            return total_equity * 0.25  # Annual vest
+        else:
+            return 0.0  # Fully vested after 4 years
+
+    # ------------------------------------------------------------------
+    # Public: compare_paths
+    # ------------------------------------------------------------------
+
+    def compare_paths(self, simulation_id: int) -> str:
+        """
+        Side-by-side path comparison with 1yr/3yr/5yr projections.
+
+        Retrieves a saved simulation and formats a comparison table.
+        """
+        if not self.enabled:
+            return "CareerSimulator disabled."
+
+        sim = self._load_simulation(simulation_id)
+        if not sim:
+            return f"Simulation {simulation_id} not found."
+
+        paths_data = sim.get("paths", [])
+        if not paths_data:
+            return "No path data in this simulation."
+
+        lines = [
+            f"=== Career Path Comparison: {sim.get('simulation_name', '')} ===",
+            f"Current Role: {sim.get('current_role', 'N/A')}",
+            "",
+        ]
+
+        for proj in paths_data:
+            company = proj.get("company", "Unknown")
+            title = proj.get("title", "Unknown")
+            yearly = proj.get("yearly_projections", [])
+
+            lines.append(f"Path: {company} - {title}")
+            lines.append(f"  Starting: {proj.get('starting_salary', 0):,}")
+
+            for yr in yearly:
+                if yr["year"] in (1, 3, 5):
+                    lines.append(
+                        f"  Y{yr['year']}: {yr['base_salary']:,} "
+                        f"({yr['title']}) — Total comp: {yr['total_comp']:,}"
+                    )
+
+            skills = proj.get("skills_gained", [])
+            if skills:
+                lines.append(f"  Skills: {', '.join(skills[:5])}")
+
+            risks = proj.get("risks", [])
+            if risks:
+                lines.append(f"  Risk: {risks[0]}")
+
+            lines.append("")
+
+        return "\n".join(lines)
+
+    # ------------------------------------------------------------------
+    # Public: get_recommendation
+    # ------------------------------------------------------------------
+
+    def get_recommendation(self, simulation_id: int) -> str:
+        """
+        AI-generated recommendation weighing compensation, growth,
+        risk, and lifestyle factors across all paths in a simulation.
+        """
+        if not self.enabled:
+            return "CareerSimulator disabled."
+
+        sim = self._load_simulation(simulation_id)
+        if not sim:
+            return f"Simulation {simulation_id} not found."
+
+        paths_data = sim.get("paths", [])
+        if not paths_data:
+            return "No path data for recommendation."
+
+        # Build comparison summary for AI
+        summary_lines = []
+        for proj in paths_data:
+            company = proj.get("company", "?")
+            title = proj.get("title", "?")
+            start_sal = proj.get("starting_salary", 0)
+            final_sal = proj.get("final_salary", 0)
+            final_title = proj.get("final_title", "?")
+            total_5yr = proj.get("total_5yr_comp", 0)
+            skills = proj.get("skills_gained", [])
+            risks = proj.get("risks", [])
+
+            summary_lines.append(
+                f"- {company} ({title}): Start {start_sal:,} -> "
+                f"Y5 {final_sal:,} as {final_title}. "
+                f"5yr total comp: {total_5yr:,}. "
+                f"Skills: {', '.join(skills[:4])}. "
+                f"Risks: {'; '.join(risks[:2])}."
             )
 
-        user_prompt = (
-            f"Career paths to simulate:\n\n"
-            + "\n\n".join(paths_text)
-            + f"\n\nProject each path over {self.projection_years} years."
-        )
+        summary = "\n".join(summary_lines)
+        current_role = sim.get("current_role", "not specified")
 
-        try:
-            raw = self.ai._call_llm(SIMULATION_SYSTEM, user_prompt)
-            result = json.loads(raw)
-            if isinstance(result, list):
-                return result
-        except (json.JSONDecodeError, TypeError, AttributeError) as exc:
-            log.warning("Failed to parse AI simulation: %s", exc)
+        # Try AI recommendation
+        if self.ai and getattr(self.ai, "enabled", False):
+            system_prompt = (
+                "You are a senior career advisor. Given multiple career path "
+                "projections, provide a clear recommendation. Weigh: total "
+                "compensation trajectory, skill development, promotion speed, "
+                "risk factors, and work-life balance. Be specific and decisive. "
+                "End with a clear 'Recommended path:' statement."
+            )
+            user_prompt = (
+                f"Current role: {current_role}\n\n"
+                f"Career paths under consideration:\n{summary}\n\n"
+                "Provide a recommendation. Which path offers the best "
+                "combination of compensation, growth, and risk-adjusted returns? "
+                "Be specific about why."
+            )
 
-        return None
+            try:
+                recommendation = self.ai._call_llm(system_prompt, user_prompt)
+                if recommendation:
+                    return recommendation.strip()
+            except Exception as e:
+                log.warning(f"AI recommendation failed: {e}")
 
-    def _ai_recommend(self, paths_data: list) -> Optional[dict]:
-        """Use AI to recommend the best path."""
-        if not self.ai or not self.ai.enabled:
-            return None
+        # Fallback: simple heuristic recommendation
+        return self._heuristic_recommendation(paths_data)
 
-        user_prompt = (
-            f"Simulation results:\n{json.dumps(paths_data, indent=2, default=str)}\n\n"
-            f"Which career path do you recommend and why?"
-        )
-
-        try:
-            raw = self.ai._call_llm(RECOMMENDATION_SYSTEM, user_prompt)
-            rec = json.loads(raw)
-            rec.setdefault("recommended_path", "")
-            rec.setdefault("reasoning", "")
-            return rec
-        except (json.JSONDecodeError, TypeError, AttributeError) as exc:
-            log.warning("Failed to parse AI recommendation: %s", exc)
-
-        return None
-
-    def _fallback_recommendation(self, paths_data: list) -> dict:
-        """Heuristic recommendation when AI is unavailable."""
+    def _heuristic_recommendation(self, paths_data: list) -> str:
+        """Simple recommendation without AI based on total 5yr comp."""
         if not paths_data:
-            return {"error": "No path data available for recommendation."}
+            return "No paths to compare."
 
-        # Pick path with highest 5-year earnings
-        best = max(paths_data, key=lambda p: p.get("total_5yr_earnings", 0))
-
-        return {
-            "recommended_path": best.get("label", "Unknown"),
-            "reasoning": (
-                f"{best.get('label', 'This path')} offers the highest projected "
-                f"5-year earnings of ${best.get('total_5yr_earnings', 0):,.0f} "
-                f"with {best.get('promotions_expected', 0)} expected promotions. "
-                f"Final projected title: {best.get('final_title', 'N/A')}."
-            ),
-            "trade_offs": [
-                "Highest comp does not always mean best career move.",
-                "Consider work-life balance and personal growth.",
-                "AI-enhanced analysis unavailable for deeper insights.",
-            ],
-            "risk_warning": "This is a heuristic recommendation based on compensation only.",
-            "alternative": "Review all paths manually for non-financial factors.",
-        }
+        best = max(paths_data, key=lambda p: p.get("total_5yr_comp", 0))
+        lines = [
+            "=== Heuristic Recommendation (AI unavailable) ===",
+            "",
+            f"Recommended: {best.get('company', '?')} - {best.get('title', '?')}",
+            f"Reason: Highest projected 5-year total compensation "
+            f"({best.get('total_5yr_comp', 0):,}).",
+            "",
+            "Note: This is a simple comparison by total comp only. "
+            "Enable AI for a nuanced recommendation weighing growth, "
+            "risk, and lifestyle factors.",
+        ]
+        return "\n".join(lines)
 
     # ------------------------------------------------------------------
-    # Internal helpers
+    # Public: generate_decision_brief
     # ------------------------------------------------------------------
 
-    def _enrich_path(self, path: dict) -> dict:
-        """Enrich a path dict with offer data from DB if job_id is provided."""
-        job_id = path.get("job_id")
-        if not job_id:
-            return path
+    def generate_decision_brief(self, simulation_id: int) -> str:
+        """
+        Formatted decision brief combining comparison and recommendation.
 
-        try:
-            row = self.state.conn.execute(
-                "SELECT * FROM offers WHERE job_id = ?", (job_id,)
-            ).fetchone()
-            if row:
-                offer = dict(row)
-                # Merge offer data into path (path values take precedence)
-                for key in ["company", "title", "base_salary", "bonus", "equity",
-                            "signing_bonus", "location", "remote_policy",
-                            "growth_potential", "team_size"]:
-                    if not path.get(key) and offer.get(key):
-                        path[key] = offer[key]
-        except Exception as exc:
-            log.debug("Could not enrich path from offers: %s", exc)
+        Output format:
+        Path A: Company - Title
+          Y1: salary -> Y3: salary (promotion) -> Y5: salary (track)
+          Skills: ...
+          Risk: ...
 
-        # Set defaults
-        path.setdefault("label", f"{path.get('company', '?')} — {path.get('title', '?')}")
-        path.setdefault("company_type", self._infer_company_type(path.get("company", "")))
-        path.setdefault("domain", self._infer_domain(path.get("title", "")))
-        path.setdefault("base_salary", 0)
-        path.setdefault("bonus", 0)
-        path.setdefault("equity", "")
-        path.setdefault("signing_bonus", 0)
+        Path B: ...
 
-        return path
+        Recommendation: ...
+        """
+        if not self.enabled:
+            return "CareerSimulator disabled."
 
-    def _save_simulation(self, sim_id: str, name: str,
-                         paths: list, result: dict) -> None:
-        """Persist simulation to career_simulations table."""
+        sim = self._load_simulation(simulation_id)
+        if not sim:
+            return f"Simulation {simulation_id} not found."
+
+        paths_data = sim.get("paths", [])
+        if not paths_data:
+            return "No path data for decision brief."
+
+        labels = "ABCDEFGHIJ"
+        lines = [
+            f"=== Decision Brief: {sim.get('simulation_name', '')} ===",
+            f"Current Role: {sim.get('current_role', 'N/A')}",
+            f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}",
+            "",
+        ]
+
+        for i, proj in enumerate(paths_data):
+            label = labels[i] if i < len(labels) else str(i + 1)
+            company = proj.get("company", "Unknown")
+            title = proj.get("title", "Unknown")
+            yearly = proj.get("yearly_projections", [])
+
+            lines.append(f"Path {label}: {company} - {title}")
+
+            # Build Y1 -> Y3 -> Y5 summary line
+            milestones = []
+            for yr in yearly:
+                if yr["year"] in (1, 3, 5):
+                    promo_note = ""
+                    if yr["title"] != title:
+                        promo_note = f" ({yr['title']})"
+                    milestones.append(
+                        f"Y{yr['year']}: {yr['base_salary']:,}{promo_note}"
+                    )
+            if milestones:
+                lines.append(f"  {' -> '.join(milestones)}")
+
+            skills = proj.get("skills_gained", [])
+            if skills:
+                lines.append(f"  Skills: {', '.join(skills[:5])}")
+
+            risks = proj.get("risks", [])
+            if risks:
+                for risk in risks[:2]:
+                    lines.append(f"  Risk: {risk}")
+
+            visa = proj.get("visa_timeline", {})
+            if visa and visa.get("required"):
+                lines.append(
+                    f"  Visa: {visa.get('type', 'Unknown')} "
+                    f"({visa.get('processing_weeks', '?')} weeks)"
+                )
+
+            lines.append("")
+
+        # Add recommendation
+        lines.append("--- Recommendation ---")
+        rec = self.get_recommendation(simulation_id)
+        lines.append(rec)
+
+        return "\n".join(lines)
+
+    # ------------------------------------------------------------------
+    # Internal: persistence
+    # ------------------------------------------------------------------
+
+    def _save_simulation(self, name: str, current_role: str,
+                         projections: list) -> int:
+        """Save a simulation to career_simulations table."""
+        rec_text = ""
         try:
             self.state.conn.execute(
                 """INSERT INTO career_simulations
-                   (simulation_name, current_role, paths, recommendation, simulated_at)
-                   VALUES (?, ?, ?, ?, ?)""",
-                (
-                    name,
-                    paths[0].get("title", "") if paths else "",
-                    json.dumps(result.get("paths", []), default=str),
-                    "",
-                    datetime.now(timezone.utc).isoformat(),
-                ),
+                   (simulation_name, current_role, paths, recommendation)
+                   VALUES (?, ?, ?, ?)""",
+                (name, current_role, json.dumps(projections), rec_text),
             )
             self.state.conn.commit()
-        except Exception as exc:
-            log.error("Failed to save simulation: %s", exc)
 
-    def _load_simulation(self, simulation_id: str) -> Optional[dict]:
-        """Load a simulation from the database."""
+            row = self.state.conn.execute(
+                "SELECT last_insert_rowid() AS id"
+            ).fetchone()
+            return row["id"] if row else 0
+        except Exception as e:
+            log.error(f"Error saving simulation: {e}")
+            return 0
+
+    def _load_simulation(self, simulation_id: int) -> Optional[dict]:
+        """Load a simulation from career_simulations table."""
         try:
             row = self.state.conn.execute(
-                "SELECT * FROM career_simulations WHERE id = ?",
+                """SELECT * FROM career_simulations WHERE id = ?""",
                 (simulation_id,),
             ).fetchone()
-            return dict(row) if row else None
-        except Exception as exc:
-            log.error("Failed to load simulation %s: %s", simulation_id, exc)
+            if not row:
+                return None
+
+            result = dict(row)
+            if isinstance(result.get("paths"), str):
+                try:
+                    result["paths"] = json.loads(result["paths"])
+                except (json.JSONDecodeError, TypeError):
+                    result["paths"] = []
+            return result
+        except Exception as e:
+            log.warning(f"Error loading simulation {simulation_id}: {e}")
             return None
-
-    @staticmethod
-    def _find_title_index(title: str, ladder: list) -> int:
-        """Find the closest match for the current title in the ladder."""
-        if not title:
-            return 0
-
-        title_lower = title.lower()
-        for i, rung in enumerate(ladder):
-            if rung.lower() in title_lower or title_lower in rung.lower():
-                return i
-
-        # Check for seniority keywords
-        if any(w in title_lower for w in ["principal", "distinguished", "fellow"]):
-            return min(3, len(ladder) - 1)
-        if any(w in title_lower for w in ["staff", "lead"]):
-            return min(2, len(ladder) - 1)
-        if "senior" in title_lower or "sr" in title_lower:
-            return min(1, len(ladder) - 1)
-
-        return 0
-
-    @staticmethod
-    def _parse_annual_equity(equity_str: str) -> float:
-        """Parse equity string into estimated annual value."""
-        if not equity_str:
-            return 0
-
-        import re
-        cleaned = equity_str.lower().replace(",", "").replace("$", "")
-
-        match = re.search(r"(\d+(?:\.\d+)?)\s*(?:/|over)\s*(\d+)", cleaned)
-        if match:
-            total = float(match.group(1))
-            years = float(match.group(2))
-            return round(total / years) if years else 0
-
-        match = re.search(r"(\d+(?:\.\d+)?)", cleaned)
-        if match:
-            val = float(match.group(1))
-            if val > 1000:
-                return round(val / 4)
-
-        return 0
-
-    @staticmethod
-    def _infer_company_type(company: str) -> str:
-        """Infer company type from name."""
-        if not company:
-            return "other"
-
-        name = company.lower()
-        if any(w in name for w in ["google", "meta", "amazon", "apple",
-                                    "microsoft", "netflix", "uber", "airbnb"]):
-            return "big_tech"
-        if any(w in name for w in ["bank", "capital", "goldman", "morgan",
-                                    "jpmorgan", "citi", "financial"]):
-            return "finance"
-        if any(w in name for w in ["mckinsey", "deloitte", "accenture",
-                                    "bain", "bcg", "kpmg", "pwc"]):
-            return "consulting"
-        if any(w in name for w in ["labs", "ai", ".io", "ventures"]):
-            return "startup"
-
-        return "enterprise"
-
-    @staticmethod
-    def _infer_domain(title: str) -> str:
-        """Infer career domain from job title."""
-        if not title:
-            return "general"
-
-        t = title.lower()
-        if any(w in t for w in ["engineer", "developer", "swe", "devops", "sre"]):
-            return "engineering"
-        if any(w in t for w in ["data", "ml", "machine learning", "analytics"]):
-            return "data"
-        if any(w in t for w in ["product manager", "pm", "product lead"]):
-            return "product"
-        if any(w in t for w in ["design", "ux", "ui"]):
-            return "design"
-
-        return "general"
