@@ -153,7 +153,7 @@ class ApplyScheduler:
             self.state.conn.execute(
                 """INSERT OR IGNORE INTO apply_schedule
                    (job_id, title, company, location, job_url, timezone, optimal_time,
-                    status, queued_at)
+                    status, created_at)
                    VALUES (?, ?, ?, ?, ?, ?, ?, 'queued', ?)""",
                 (
                     str(job_id), title, company, location, job_url,
@@ -363,7 +363,7 @@ class ApplyScheduler:
             result = self.state.conn.execute(
                 """UPDATE apply_schedule
                    SET status = 'expired', created_at = datetime('now','localtime')
-                   WHERE status = 'queued' AND queued_at < ?""",
+                   WHERE status = 'queued' AND created_at < ?""",
                 (now, cutoff.isoformat()),
             ).fetchone()
             self.state.conn.commit()

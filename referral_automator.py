@@ -38,7 +38,7 @@ class ReferralAutomator:
                     job_title TEXT,
                     connection_name TEXT,
                     connection_url TEXT,
-                    is_first_degree INTEGER DEFAULT 1,
+                    connection_url INTEGER DEFAULT 1,
                     message TEXT,
                     status TEXT DEFAULT 'draft',
                     sent_at TEXT,
@@ -58,7 +58,7 @@ class ReferralAutomator:
 
     def draft_referral_request(self, job_id, company, job_title,
                                connection_name, connection_url,
-                               is_first_degree=True):
+                               connection_url=True):
         """AI-generate a referral request message and store it as a draft.
 
         For 1st-degree connections a full message is generated.
@@ -72,7 +72,7 @@ class ReferralAutomator:
             return None
 
         try:
-            if is_first_degree:
+            if connection_url:
                 prompt = self._build_full_message_prompt(
                     job_title, company, connection_name
                 )
@@ -84,7 +84,7 @@ class ReferralAutomator:
             message = self.ai.generate(prompt)
 
             # Enforce length constraint for connection-request notes
-            if not is_first_degree and len(message) > MAX_CONNECTION_NOTE_LENGTH:
+            if not connection_url and len(message) > MAX_CONNECTION_NOTE_LENGTH:
                 message = message[:MAX_CONNECTION_NOTE_LENGTH - 3].rsplit(" ", 1)[0] + "..."
 
             now = datetime.now(timezone.utc).isoformat()
@@ -92,10 +92,10 @@ class ReferralAutomator:
             self.state.conn.execute(
                 """INSERT INTO referral_requests
                    (job_id, company, job_title, connection_name, connection_url,
-                    is_first_degree, message, status, created_at, updated_at)
+                    connection_url, message_text, status, created_at, updated_at)
                    VALUES (?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?)""",
                 (job_id, company, job_title, connection_name, connection_url,
-                 int(is_first_degree), message, now, now),
+                 int(connection_url), message_text, now, now),
             )
             self.state.conn.commit()
 
@@ -105,8 +105,8 @@ class ReferralAutomator:
                 "job_title": job_title,
                 "connection_name": connection_name,
                 "connection_url": connection_url,
-                "is_first_degree": is_first_degree,
-                "message": message,
+                "connection_url": connection_url,
+                "message_text": message,
                 "status": "draft",
             }
             logger.info(
@@ -118,7 +118,7 @@ class ReferralAutomator:
             logger.error("Error drafting referral request: %s", exc)
             return None
 
-    def send_referral_request(self, driver, connection_url, message):
+    def send_referral_request(self, driver, connection_url, message_text):
         """Send a referral request message via LinkedIn messaging.
 
         Returns True if the message was sent successfully, False otherwise.
@@ -136,7 +136,7 @@ class ReferralAutomator:
             # Find the message input area
             msg_box = driver.find_element(
                 "css selector",
-                "div.msg-form__contenteditable, textarea[name='message']"
+                "div.msg-form__contenteditable, textarea[name='message_text']"
             )
             msg_box.click()
             time.sleep(0.5)
@@ -164,7 +164,7 @@ class ReferralAutomator:
         try:
             rows = self.state.conn.execute(
                 """SELECT id, job_id, company, job_title, connection_name,
-                          connection_url, is_first_degree, message, created_at
+                          connection_url, connection_url, message_text, created_at
                    FROM referral_requests
                    WHERE status = 'draft'
                    ORDER BY created_at ASC"""
@@ -173,8 +173,8 @@ class ReferralAutomator:
                 {
                     "id": r[0], "job_id": r[1], "company": r[2],
                     "job_title": r[3], "connection_name": r[4],
-                    "connection_url": r[5], "is_first_degree": bool(r[6]),
-                    "message": r[7], "created_at": r[8],
+                    "connection_url": r[5], "connection_url": bool(r[6]),
+                    "message_text": r[7], "created_at": r[8],
                 }
                 for r in rows
             ]
@@ -206,7 +206,7 @@ class ReferralAutomator:
         sent_count = 0
         for request in pending[:remaining]:
             success = self.send_referral_request(
-                driver, request["connection_url"], request["message"]
+                driver, request["connection_url"], request["message_text"]
             )
             now = datetime.now(timezone.utc).isoformat()
             if success:

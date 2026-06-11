@@ -28,11 +28,10 @@ class SalaryNegotiator:
                 """CREATE TABLE IF NOT EXISTS salary_data (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     title TEXT NOT NULL,
-                    company TEXT,
-                    location TEXT,
-                    min_salary REAL,
-                    max_salary REAL,
-                    median_salary REAL,
+                    company TEXT TEXT,
+                    salary_min REAL,
+                    salary_max REAL,
+                    salary_max REAL,
                     currency TEXT DEFAULT 'USD',
                     source TEXT,
                     updated_at TEXT
@@ -43,8 +42,7 @@ class SalaryNegotiator:
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     job_id TEXT NOT NULL UNIQUE,
                     title TEXT,
-                    company TEXT,
-                    location TEXT,
+                    company TEXT TEXT,
                     market_rate_min REAL,
                     market_rate_max REAL,
                     market_rate_median REAL,
@@ -54,8 +52,8 @@ class SalaryNegotiator:
                     counter_offer_min REAL,
                     counter_offer_target REAL,
                     counter_offer_max REAL,
-                    full_brief TEXT,
-                    created_at TEXT
+                    leverage_points TEXT,
+                    generated_at TEXT
                 )"""
             )
             self.state.conn.commit()
@@ -66,14 +64,14 @@ class SalaryNegotiator:
     # Public API
     # ------------------------------------------------------------------
 
-    def generate_brief(self, job_id, title, company, location):
+    def generate_brief(self, job_id, title, company):
         """Build a complete negotiation brief for the given job and persist it."""
         if not self.enabled:
             logger.debug("SalaryNegotiator is disabled; skipping brief generation.")
             return None
 
         try:
-            market = self.get_market_rate(title, location)
+            market = self.get_market_rate(title)
             company_range = self.get_company_range(company)
             leverage = self.generate_leverage_points(title, company, market)
             current_salary = self.cfg.get("salary_negotiation", {}).get("current_salary")
@@ -91,8 +89,8 @@ class SalaryNegotiator:
                 "generated_at": datetime.now(timezone.utc).isoformat(),
             }
 
-            full_brief_text = self._format_brief(brief)
-            brief["full_brief"] = full_brief_text
+            leverage_points_text = self._format_brief(brief)
+            brief["leverage_points"] = leverage_points_text
 
             self._save_brief(brief)
             logger.info("Negotiation brief generated for job %s at %s.", job_id, company)
@@ -101,11 +99,11 @@ class SalaryNegotiator:
             logger.error("Error generating negotiation brief for %s: %s", job_id, exc)
             return None
 
-    def get_market_rate(self, title, location):
+    def get_market_rate(self, title):
         """Look up market salary data from the salary_data table."""
         try:
             rows = self.state.conn.execute(
-                """SELECT min_salary, max_salary, median_salary
+                """SELECT salary_min, salary_max, salary_max
                    FROM salary_data
                    WHERE LOWER(title) LIKE ? AND LOWER(location) LIKE ?
                    ORDER BY updated_at DESC LIMIT 5""",
@@ -114,7 +112,7 @@ class SalaryNegotiator:
 
             if not rows:
                 rows = self.state.conn.execute(
-                    """SELECT min_salary, max_salary, median_salary
+                    """SELECT salary_min, salary_max, salary_max
                        FROM salary_data
                        WHERE LOWER(title) LIKE ?
                        ORDER BY updated_at DESC LIMIT 5""",
@@ -122,7 +120,7 @@ class SalaryNegotiator:
                 ).fetchall()
 
             if not rows:
-                logger.warning("No market data found for '%s' in '%s'.", title, location)
+                logger.warning("No market data found for '%s' in '%s'.", title)
                 return {"min": None, "max": None, "median": None}
 
             avg_min = sum(r[0] for r in rows if r[0]) / max(sum(1 for r in rows if r[0]), 1)
@@ -138,7 +136,7 @@ class SalaryNegotiator:
         """Retrieve historical salary data for a specific company."""
         try:
             rows = self.state.conn.execute(
-                """SELECT min_salary, max_salary, median_salary
+                """SELECT salary_min, salary_max, salary_max
                    FROM salary_data
                    WHERE LOWER(company) LIKE ?
                    ORDER BY updated_at DESC LIMIT 10""",
@@ -230,7 +228,7 @@ class SalaryNegotiator:
         """Retrieve a previously saved negotiation brief."""
         try:
             row = self.state.conn.execute(
-                "SELECT full_brief FROM negotiation_briefs WHERE job_id = ?",
+                "SELECT leverage_points FROM negotiation_briefs WHERE job_id = ?",
                 (job_id,),
             ).fetchone()
             if row:
@@ -255,12 +253,12 @@ class SalaryNegotiator:
 
             self.state.conn.execute(
                 """INSERT OR REPLACE INTO negotiation_briefs
-                   (job_id, title, company, location,
-                    market_rate_min, market_rate_max, market_rate_median,
-                    company_range_min, company_range_max,
+                   (job_id, title, company,
+                    market_rate,
+                    company_range,
                     leverage_points,
-                    counter_offer_min, counter_offer_target, counter_offer_max,
-                    full_brief, created_at)
+                    counter_offer,
+                    leverage_points, generated_at)
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     brief["job_id"], brief["title"], brief["company"], brief["location"],
@@ -268,7 +266,7 @@ class SalaryNegotiator:
                     company.get("min"), company.get("max"),
                     leverage_json,
                     counter.get("min"), counter.get("target"), counter.get("max"),
-                    brief.get("full_brief", ""),
+                    brief.get("leverage_points", ""),
                     datetime.now(timezone.utc).isoformat(),
                 ),
             )

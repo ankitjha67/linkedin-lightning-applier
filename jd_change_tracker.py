@@ -200,7 +200,7 @@ class JDChangeTracker:
 
         try:
             rows = self.state.conn.execute(
-                """SELECT job_id, change_type, summary, detected_at
+                """SELECT job_id, change_type, old_value, new_value, detected_at
                    FROM jd_changes
                    ORDER BY detected_at DESC"""
             ).fetchall()
@@ -208,7 +208,8 @@ class JDChangeTracker:
                 {
                     "job_id": r["job_id"],
                     "change_type": r["change_type"],
-                    "summary": r["summary"],
+                    "old_value": r["old_value"],
+                    "new_value": r["new_value"],
                     "detected_at": r["detected_at"],
                 }
                 for r in rows
@@ -344,12 +345,11 @@ class JDChangeTracker:
             try:
                 self.state.conn.execute(
                     """INSERT INTO jd_changes
-                       (job_id, change_type, summary, old_value, new_value, detected_at)
-                       VALUES (?, ?, ?, ?, ?, ?)""",
+                       (job_id, change_type, old_value, new_value, detected_at)
+                       VALUES (?, ?, ?, ?, ?)""",
                     (
                         str(job_id),
-                        change["type"],
-                        change["summary"],
+                        change.get("type", ""),
                         change.get("old_value", ""),
                         change.get("new_value", ""),
                         now,
