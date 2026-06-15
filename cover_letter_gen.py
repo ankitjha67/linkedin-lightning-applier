@@ -56,7 +56,7 @@ class CoverLetterGenerator:
                           match_result: dict = None, recruiter_name: str = "") -> str | None:
         """Generate cover letter text using AI."""
         personal = self.cfg.get("personal", {})
-        name = personal.get("full_name", "")
+        personal.get("full_name", "")
 
         skill_context = ""
         if match_result:

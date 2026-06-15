@@ -7,8 +7,6 @@ changes to improve search visibility and recruiter matching.
 """
 
 import logging
-import re
-from collections import Counter
 
 log = logging.getLogger("lla.profile_opt")
 

@@ -10,7 +10,6 @@ import logging
 import os
 import re
 import time
-import random
 from typing import Optional
 
 log = logging.getLogger("lla.external_apply")
@@ -76,7 +75,6 @@ class ExternalApplier:
 
         # Save current window handle
         original_window = driver.current_window_handle
-        original_url = driver.current_url
 
         try:
             # Open in new tab
@@ -124,13 +122,12 @@ class ExternalApplier:
     def _fill_greenhouse(self, driver, job_context: dict, resume_path: str) -> bool:
         """Fill Greenhouse application form."""
         from selenium.webdriver.common.by import By
-        from selenium.webdriver.support.ui import Select
 
         log.debug("   Filling Greenhouse form...")
         time.sleep(2)
 
         personal = self.cfg.get("personal", {})
-        app = self.cfg.get("application", {})
+        self.cfg.get("application", {})
 
         try:
             # Greenhouse forms typically have: name, email, phone, resume, optional fields

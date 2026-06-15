@@ -5,7 +5,6 @@ Returns 0 (healthy) if the bot is running and responsive.
 """
 
 import sys
-import json
 from pathlib import Path
 from datetime import datetime, timedelta
 

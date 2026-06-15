@@ -3,14 +3,17 @@
 When network_leverage finds 1st-degree connections at a target company,
 this module auto-drafts and optionally sends referral request messages
 via LinkedIn messaging.
+
+Uses the `referral_requests` table defined in state.py:
+  id, job_id, company, job_title, connection_name, connection_url,
+  message_text, status, sent_at, created_at
 """
 
 import logging
-import json
 import time
 from datetime import datetime, timezone
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("lla.referral")
 
 # LinkedIn connection-request notes are limited to 300 characters.
 MAX_CONNECTION_NOTE_LENGTH = 300
@@ -23,34 +26,10 @@ class ReferralAutomator:
         self.ai = ai
         self.cfg = cfg
         self.state = state
-        self.enabled = cfg.get("referral_automator", {}).get("enabled", False)
-        self.daily_limit = cfg.get("referral_automator", {}).get("daily_limit", 10)
-        self._ensure_tables()
-
-    def _ensure_tables(self):
-        """Create the referral_requests table if it does not exist."""
-        try:
-            self.state.conn.execute(
-                """CREATE TABLE IF NOT EXISTS referral_requests (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    job_id TEXT NOT NULL,
-                    company TEXT,
-                    job_title TEXT,
-                    connection_name TEXT,
-                    connection_url TEXT,
-                    connection_url INTEGER DEFAULT 1,
-                    message TEXT,
-                    status TEXT DEFAULT 'draft',
-                    sent_at TEXT,
-                    responded INTEGER DEFAULT 0,
-                    successful INTEGER DEFAULT 0,
-                    created_at TEXT,
-                    updated_at TEXT
-                )"""
-            )
-            self.state.conn.commit()
-        except Exception as exc:
-            logger.error("Failed to initialise referral_requests table: %s", exc)
+        rc = cfg.get("referral_automator", {})
+        self.enabled = rc.get("enabled", False)
+        self.daily_limit = rc.get("max_requests_per_day", rc.get("daily_limit", 5))
+        self.auto_send = rc.get("auto_send", False)
 
     # ------------------------------------------------------------------
     # Public API
@@ -58,7 +37,7 @@ class ReferralAutomator:
 
     def draft_referral_request(self, job_id, company, job_title,
                                connection_name, connection_url,
-                               connection_url=True):
+                               is_first_degree=True):
         """AI-generate a referral request message and store it as a draft.
 
         For 1st-degree connections a full message is generated.
@@ -72,48 +51,39 @@ class ReferralAutomator:
             return None
 
         try:
-            if connection_url:
-                prompt = self._build_full_message_prompt(
-                    job_title, company, connection_name
-                )
-            else:
-                prompt = self._build_short_note_prompt(
-                    job_title, company, connection_name
-                )
-
-            message = self.ai.generate(prompt)
+            message = self._generate_message(
+                job_title, company, connection_name, is_first_degree
+            )
+            if not message:
+                return None
 
             # Enforce length constraint for connection-request notes
-            if not connection_url and len(message) > MAX_CONNECTION_NOTE_LENGTH:
+            if not is_first_degree and len(message) > MAX_CONNECTION_NOTE_LENGTH:
                 message = message[:MAX_CONNECTION_NOTE_LENGTH - 3].rsplit(" ", 1)[0] + "..."
 
             now = datetime.now(timezone.utc).isoformat()
-
             self.state.conn.execute(
                 """INSERT INTO referral_requests
                    (job_id, company, job_title, connection_name, connection_url,
-                    connection_url, message_text, status, created_at, updated_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?)""",
+                    message_text, status, sent_at, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, 'draft', NULL, ?)""",
                 (job_id, company, job_title, connection_name, connection_url,
-                 int(connection_url), message_text, now, now),
+                 message, now),
             )
             self.state.conn.commit()
 
-            draft = {
+            logger.info("Drafted referral request for %s at %s to %s.",
+                        job_title, company, connection_name)
+            return {
                 "job_id": job_id,
                 "company": company,
                 "job_title": job_title,
                 "connection_name": connection_name,
                 "connection_url": connection_url,
-                "connection_url": connection_url,
+                "is_first_degree": is_first_degree,
                 "message_text": message,
                 "status": "draft",
             }
-            logger.info(
-                "Drafted referral request for %s at %s to %s.",
-                job_title, company, connection_name,
-            )
-            return draft
         except Exception as exc:
             logger.error("Error drafting referral request: %s", exc)
             return None
@@ -123,40 +93,14 @@ class ReferralAutomator:
 
         Returns True if the message was sent successfully, False otherwise.
         """
-        if not self.enabled:
-            logger.debug("ReferralAutomator disabled; skipping send.")
+        if not self.enabled or not connection_url:
             return False
 
         try:
-            # Navigate to the connection's messaging page
-            messaging_url = connection_url.rstrip("/") + "/overlay/message/"
-            driver.get(messaging_url)
-            time.sleep(2)
-
-            # Find the message input area
-            msg_box = driver.find_element(
-                "css selector",
-                "div.msg-form__contenteditable, textarea[name='message_text']"
-            )
-            msg_box.click()
-            time.sleep(0.5)
-
-            # Type the message
-            msg_box.send_keys(message)
-            time.sleep(0.5)
-
-            # Click the send button
-            send_btn = driver.find_element(
-                "css selector",
-                "button.msg-form__send-button, button[type='submit']"
-            )
-            send_btn.click()
-            time.sleep(1)
-
-            logger.info("Sent referral request to %s.", connection_url)
-            return True
+            from linkedin import send_linkedin_message
+            return send_linkedin_message(driver, connection_url, message_text)
         except Exception as exc:
-            logger.error("Failed to send message to %s: %s", connection_url, exc)
+            logger.error("Failed to send referral to %s: %s", connection_url, exc)
             return False
 
     def get_pending_requests(self):
@@ -164,17 +108,17 @@ class ReferralAutomator:
         try:
             rows = self.state.conn.execute(
                 """SELECT id, job_id, company, job_title, connection_name,
-                          connection_url, connection_url, message_text, created_at
+                          connection_url, message_text, created_at
                    FROM referral_requests
                    WHERE status = 'draft'
                    ORDER BY created_at ASC"""
             ).fetchall()
             return [
                 {
-                    "id": r[0], "job_id": r[1], "company": r[2],
-                    "job_title": r[3], "connection_name": r[4],
-                    "connection_url": r[5], "connection_url": bool(r[6]),
-                    "message_text": r[7], "created_at": r[8],
+                    "id": r["id"], "job_id": r["job_id"], "company": r["company"],
+                    "job_title": r["job_title"], "connection_name": r["connection_name"],
+                    "connection_url": r["connection_url"], "message_text": r["message_text"],
+                    "created_at": r["created_at"],
                 }
                 for r in rows
             ]
@@ -183,22 +127,19 @@ class ReferralAutomator:
             return []
 
     def process_requests(self, driver):
-        """Send all pending referral requests, respecting the daily limit.
+        """Send pending referral requests, respecting the daily limit.
 
-        Returns the number of messages successfully sent.
+        Returns the number of messages successfully sent. Only sends when
+        auto_send is enabled; otherwise drafts remain for manual review.
         """
-        if not self.enabled:
-            logger.debug("ReferralAutomator disabled; skipping process.")
+        if not self.enabled or not self.auto_send:
             return 0
 
         pending = self.get_pending_requests()
         if not pending:
-            logger.info("No pending referral requests to process.")
             return 0
 
-        sent_today = self._count_sent_today()
-        remaining = max(0, self.daily_limit - sent_today)
-
+        remaining = max(0, self.daily_limit - self._count_sent_today())
         if remaining == 0:
             logger.info("Daily referral request limit (%d) reached.", self.daily_limit)
             return 0
@@ -209,95 +150,84 @@ class ReferralAutomator:
                 driver, request["connection_url"], request["message_text"]
             )
             now = datetime.now(timezone.utc).isoformat()
-            if success:
-                self.state.conn.execute(
-                    """UPDATE referral_requests
-                       SET status = 'sent', sent_at = ?, updated_at = ?
-                       WHERE id = ?""",
-                    (now, now, request["id"]),
-                )
-                sent_count += 1
-            else:
-                self.state.conn.execute(
-                    """UPDATE referral_requests
-                       SET status = 'failed', updated_at = ?
-                       WHERE id = ?""",
-                    (now, request["id"]),
-                )
+            new_status = "sent" if success else "failed"
+            self.state.conn.execute(
+                "UPDATE referral_requests SET status = ?, sent_at = ? WHERE id = ?",
+                (new_status, now if success else None, request["id"]),
+            )
             self.state.conn.commit()
+            if success:
+                sent_count += 1
+            time.sleep(3)  # avoid rate limits
 
-            # Brief pause between messages to avoid triggering rate limits
-            time.sleep(3)
-
-        logger.info("Processed %d referral requests; %d sent.", len(pending[:remaining]), sent_count)
+        logger.info("Processed %d referral requests; %d sent.",
+                    len(pending[:remaining]), sent_count)
         return sent_count
 
     def get_referral_stats(self):
-        """Return counts: sent, responded, successful."""
+        """Return counts by status."""
         try:
-            total_sent = self.state.conn.execute(
-                "SELECT COUNT(*) FROM referral_requests WHERE status = 'sent'"
-            ).fetchone()[0]
-            total_responded = self.state.conn.execute(
-                "SELECT COUNT(*) FROM referral_requests WHERE responded = 1"
-            ).fetchone()[0]
-            total_successful = self.state.conn.execute(
-                "SELECT COUNT(*) FROM referral_requests WHERE successful = 1"
-            ).fetchone()[0]
-            total_draft = self.state.conn.execute(
-                "SELECT COUNT(*) FROM referral_requests WHERE status = 'draft'"
-            ).fetchone()[0]
+            def _count(where, params=()):
+                row = self.state.conn.execute(
+                    f"SELECT COUNT(*) as c FROM referral_requests WHERE {where}", params
+                ).fetchone()
+                return row["c"] if row else 0
 
             return {
-                "draft": total_draft,
-                "sent": total_sent,
-                "responded": total_responded,
-                "successful": total_successful,
+                "draft": _count("status = 'draft'"),
+                "sent": _count("status = 'sent'"),
+                "failed": _count("status = 'failed'"),
             }
         except Exception as exc:
             logger.error("Error fetching referral stats: %s", exc)
-            return {"draft": 0, "sent": 0, "responded": 0, "successful": 0}
+            return {"draft": 0, "sent": 0, "failed": 0}
 
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
 
-    def _build_full_message_prompt(self, job_title, company, connection_name):
-        """Build AI prompt for a full referral request message (1st degree)."""
-        return (
-            f"Write a professional but warm LinkedIn message to {connection_name} "
-            f"requesting a referral for the '{job_title}' role at {company}.\n\n"
-            f"Guidelines:\n"
-            f"- Be personal and mention the specific role\n"
-            f"- Keep it under 500 words\n"
-            f"- Mention that you have a tailored resume ready to share\n"
-            f"- Express genuine interest in the company\n"
-            f"- Be respectful of their time and make it easy to say no\n"
-            f"- Do not be overly formal or use cliches\n"
-            f"Return only the message text, no subject line or extras."
-        )
+    def _generate_message(self, job_title, company, connection_name, is_first_degree):
+        """Generate a referral message via AI, with a graceful fallback."""
+        first_name = connection_name.split()[0] if connection_name else "there"
 
-    def _build_short_note_prompt(self, job_title, company, connection_name):
-        """Build AI prompt for a short connection-request note (non-1st degree)."""
-        return (
-            f"Write a very concise LinkedIn connection request note to "
-            f"{connection_name} at {company} about the '{job_title}' role.\n\n"
-            f"STRICT LIMIT: Maximum {MAX_CONNECTION_NOTE_LENGTH} characters.\n"
-            f"- Be direct and personal\n"
-            f"- Mention the specific role briefly\n"
-            f"- Express interest in connecting\n"
-            f"Return only the note text."
-        )
+        if not self.ai or not getattr(self.ai, "enabled", False):
+            if is_first_degree:
+                return (f"Hi {first_name}, I noticed {company} is hiring for a "
+                        f"{job_title} role. Since you're there, would you be open to "
+                        f"referring me? Happy to share a tailored resume. Thanks!")
+            return (f"Hi {first_name}, I'm applying for the {job_title} role at "
+                    f"{company} and would love to connect.")[:MAX_CONNECTION_NOTE_LENGTH]
+
+        if is_first_degree:
+            system = (
+                "You write warm, professional LinkedIn referral-request messages. "
+                "Personal, mention the specific role, under 120 words, mention a "
+                "tailored resume is ready, make it easy to decline. No cliches. "
+                "Return only the message text."
+            )
+        else:
+            system = (
+                f"You write concise LinkedIn connection-request notes under "
+                f"{MAX_CONNECTION_NOTE_LENGTH} characters. Direct, personal, mention "
+                f"the role briefly. Return only the note text."
+            )
+        user = (f"Recipient: {connection_name}\nRole: {job_title}\n"
+                f"Company: {company}\n\n{getattr(self.ai, 'profile_context', '')[:1000]}")
+        try:
+            return self.ai._call_llm(system, user) or ""
+        except Exception as exc:
+            logger.debug("AI referral generation failed: %s", exc)
+            return ""
 
     def _count_sent_today(self):
         """Count how many referral requests were sent today."""
         try:
             today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
             row = self.state.conn.execute(
-                "SELECT COUNT(*) FROM referral_requests WHERE sent_at LIKE ?",
+                "SELECT COUNT(*) as c FROM referral_requests WHERE sent_at LIKE ?",
                 (f"{today}%",),
             ).fetchone()
-            return row[0] if row else 0
+            return row["c"] if row else 0
         except Exception as exc:
             logger.error("Error counting today's sent requests: %s", exc)
             return 0

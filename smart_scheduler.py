@@ -11,7 +11,7 @@ import logging
 import math
 import re
 from collections import defaultdict
-from datetime import datetime, date, timedelta
+from datetime import datetime
 
 log = logging.getLogger("lla.smart_scheduler")
 

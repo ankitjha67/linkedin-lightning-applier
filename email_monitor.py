@@ -12,7 +12,6 @@ import logging
 import re
 from datetime import datetime, timedelta
 from email.header import decode_header
-from typing import Optional
 
 log = logging.getLogger("lla.email_monitor")
 

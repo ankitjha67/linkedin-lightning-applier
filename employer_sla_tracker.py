@@ -7,10 +7,8 @@ per company and stage. Identifies overdue applications and ranks companies
 by responsiveness.
 """
 
-import json
 import logging
 from datetime import datetime, timedelta
-from typing import Optional
 
 log = logging.getLogger("lla.employer_sla_tracker")
 

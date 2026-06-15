@@ -16,8 +16,7 @@ Analysis dimensions:
 
 import json
 import logging
-import re
-from collections import Counter, defaultdict
+from collections import defaultdict
 from datetime import datetime, timezone
 from typing import Optional
 

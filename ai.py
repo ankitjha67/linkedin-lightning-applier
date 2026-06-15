@@ -14,9 +14,7 @@ Flow:
 All providers use the OpenAI client library (they all support OpenAI-compatible APIs).
 """
 
-import re
 import json
-import time
 import logging
 import hashlib
 import sqlite3
@@ -326,6 +324,17 @@ RULES:
 
         parts.append("\nAnswer (concise, no explanation):")
         return "\n".join(parts)
+
+    def generate(self, prompt: str, system: str = "") -> str:
+        """Single-prompt generation convenience wrapper around _call_llm.
+
+        Returns the model's text response, or "" if AI is disabled/fails.
+        Used by modules that build a complete prompt string themselves
+        (e.g. multi_language, salary_negotiation).
+        """
+        if not self.enabled:
+            return ""
+        return self._call_llm(system or "You are a helpful career assistant.", prompt)
 
     def _call_llm(self, system: str, user: str) -> str:
         """Call primary LLM, fall back to secondary if primary fails."""

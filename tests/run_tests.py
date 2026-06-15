@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-import unittest, sys, os
+import unittest
+import sys
+import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 loader = unittest.TestLoader()
 suite = loader.discover('tests', pattern='test_*.py')

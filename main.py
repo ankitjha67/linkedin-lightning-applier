@@ -26,7 +26,6 @@ from pathlib import Path
 
 try:
     import yaml
-    from selenium.common.exceptions import WebDriverException
     from selenium.webdriver.common.by import By
 except ImportError:
     print("Missing dependencies. Run: pip install selenium undetected-chromedriver pyyaml")
@@ -35,10 +34,10 @@ except ImportError:
 from state import State
 from linkedin import (
     create_browser, login, verify_session, build_search_url, navigate_to_search,
-    get_job_cards, extract_job_info, get_job_description, get_salary_info,
+    get_job_cards, get_job_description, get_salary_info,
     extract_experience_requirement, extract_hiring_team, detect_visa_sponsorship,
     click_easy_apply, process_easy_apply, discard_application,
-    human_sleep, safe_click, click_job_card, get_external_apply_url,
+    human_sleep, click_job_card, get_external_apply_url,
 )
 from ai import AIAnswerer
 
@@ -489,7 +488,7 @@ def process_page(drv, cfg: dict, st: State, sched: dict,
                 applied_badges = drv.find_elements(By.XPATH, "//*[contains(text(), 'Applied')]")
             for badge in applied_badges:
                 if "applied" in badge.text.lower() and badge.is_displayed():
-                    log.info(f"   ⏭️  Already applied (badge)")
+                    log.info("   ⏭️  Already applied (badge)")
                     st.mark_skipped(job_id, title, company, location, "already applied (badge)",
                                    search_term=search_term, search_location=search_location)
                     result["skipped"] += 1
@@ -659,7 +658,7 @@ def process_page(drv, cfg: dict, st: State, sched: dict,
                     match_score=match_score, resume_version=resume_version,
                 )
                 result["applied"] += 1
-                log.info(f"   ✅  APPLIED!")
+                log.info("   ✅  APPLIED!")
 
                 # POST-APPLY ACTIONS
                 # Queue recruiter message
@@ -692,7 +691,7 @@ def process_page(drv, cfg: dict, st: State, sched: dict,
             else:
                 st.mark_failed(job_id, title, company, "modal failed")
                 result["failed"] += 1
-                log.info(f"   ❌  Modal failed")
+                log.info("   ❌  Modal failed")
 
         except Exception as e:
             log.warning(f"   💥  Error: {e}")
@@ -802,7 +801,6 @@ def run_cycle(drv, cfg: dict, st: State, ai=None,
                 break
 
             sl = loc.split(",")[0].strip()
-            found_results = False
 
             for filter_idx in range(chain_start, len(TIME_CHAIN)):
                 if shutdown_requested: break
@@ -824,8 +822,6 @@ def run_cycle(drv, cfg: dict, st: State, ai=None,
 
                     from linkedin import get_job_cards as _peek_cards
                     cards = _peek_cards(drv)
-                    new_cards = [c for c in cards
-                                 if c.get_attribute("data-occludable-job-id") not in cycle_seen_ids]
 
                     if len(cards) == 0 and filter_idx < len(TIME_CHAIN) - 1:
                         log.info(f"   0 results for \"{time_filter}\"")
@@ -841,7 +837,6 @@ def run_cycle(drv, cfg: dict, st: State, ai=None,
                                     scheduler=scheduler)
                     tot_a += r["applied"]; tot_s += r["skipped"]; tot_f += r["failed"]
                     log.info(f"   Page: +{r['applied']}A +{r['skipped']}S +{r['failed']}F | Unique seen: {len(cycle_seen_ids)}")
-                    found_results = True
                     break
 
                 except Exception as e:
@@ -1059,6 +1054,12 @@ def run_forever(config_path: str):
     log.info("Launching browser...")
     try:
         driver = create_browser(cfg)
+        if fp_rotator and fp_rotator.enabled:
+            try:
+                fp_rotator.apply_runtime_spoofing(driver)
+                log.info("Applied browser fingerprint spoofing")
+            except Exception as e:
+                log.debug(f"Fingerprint spoofing failed: {e}")
     except Exception as e:
         log.error(f"Browser failed: {e}")
         sys.exit(1)
@@ -1096,7 +1097,7 @@ def run_forever(config_path: str):
             interval = int(interval * adj)
 
         if not is_active_hours(cfg):
-            log.info(f"Outside active hours. Sleeping 10 min...")
+            log.info("Outside active hours. Sleeping 10 min...")
             time.sleep(600)
             continue
 
@@ -1111,7 +1112,7 @@ def run_forever(config_path: str):
         except Exception:
             log.warning("Browser crashed! Restarting...")
             try: driver.quit()
-            except: pass
+            except Exception: pass
             driver = create_browser(cfg)
             if not login(driver, cfg):
                 time.sleep(60)
@@ -1145,7 +1146,7 @@ def run_forever(config_path: str):
             if errors >= 5:
                 log.error("Too many errors. Restarting browser...")
                 try: driver.quit()
-                except: pass
+                except Exception: pass
                 try:
                     driver = create_browser(cfg)
                     login(driver, cfg)
@@ -1272,7 +1273,7 @@ def run_forever(config_path: str):
 
     if driver:
         try: driver.quit()
-        except: pass
+        except Exception: pass
     if state:
         state.close()
     log.info("Goodbye! 👋")

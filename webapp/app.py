@@ -13,7 +13,6 @@ import os
 import secrets
 import sqlite3
 from datetime import datetime
-from pathlib import Path
 
 log = logging.getLogger("lla.webapp")
 
@@ -208,7 +207,7 @@ button:hover {{ background: #004182; }}
             return render_template("index.html", stats=stats, recent=[dict(r) for r in recent])
         except Exception as e:
             log.error(f"Dashboard error: {e}")
-            return f"Dashboard error: check logs", 500
+            return "Dashboard error: check logs", 500
 
     @app.route("/jobs")
     @login_required
@@ -371,7 +370,7 @@ def run_webapp(host: str = "0.0.0.0", port: int = 8080, db_path: str = "data/sta
     app = create_webapp(db_path)
     if app:
         print(f"Starting LLA Web App at http://{host}:{port}")
-        print(f"Set LLA_PASSWORD_HASH env var for authentication")
+        print("Set LLA_PASSWORD_HASH env var for authentication")
         app.run(host=host, port=port, debug=False)
 
 

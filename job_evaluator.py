@@ -13,7 +13,6 @@ Each block is a separate AI call with a focused prompt.
 Results are persisted to the job_evaluations table.
 """
 
-import json
 import logging
 from datetime import datetime
 from typing import Optional

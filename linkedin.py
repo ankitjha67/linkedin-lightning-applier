@@ -22,7 +22,6 @@ from selenium.webdriver.remote.webelement import WebElement
 from selenium.common.exceptions import (
     NoSuchElementException, TimeoutException, ElementClickInterceptedException,
     StaleElementReferenceException, ElementNotInteractableException,
-    WebDriverException,
 )
 
 log = logging.getLogger("lla.linkedin")
@@ -67,7 +66,7 @@ def text_input(driver, el: WebElement, text: str):
         el.send_keys(str(text))
         time.sleep(0.2)
     except Exception:
-        driver.execute_script(f"arguments[0].value = arguments[1];", el, str(text))
+        driver.execute_script("arguments[0].value = arguments[1];", el, str(text))
         el.send_keys(" " + Keys.BACKSPACE)
 
 
@@ -310,7 +309,7 @@ def login(driver, cfg: dict) -> bool:
             # Dump what input fields exist
             try:
                 inputs_info = driver.execute_script("""
-                    return Array.from(document.querySelectorAll('input')).map(i => 
+                    return Array.from(document.querySelectorAll('input')).map(i =>
                         i.id + '|' + i.name + '|' + i.type + '|' + i.placeholder
                     ).join('\\n');
                 """)
@@ -332,7 +331,7 @@ def login(driver, cfg: dict) -> bool:
                 if btn.is_displayed() and btn.is_enabled():
                     btn.click()
                     clicked = True
-                    log.info(f"  Sign in: ✓ clicked")
+                    log.info("  Sign in: ✓ clicked")
                     break
             except NoSuchElementException:
                 continue
@@ -631,7 +630,7 @@ def has_no_results(driver) -> bool:
                 try:
                     prev = h.find_element(By.XPATH, "./preceding-sibling::*[1]")
                     if "no" in prev.text.lower() and ("result" in prev.text.lower() or "match" in prev.text.lower()):
-                        log.info(f"  No results — only showing suggested/recommended jobs")
+                        log.info("  No results — only showing suggested/recommended jobs")
                         return True
                 except Exception:
                     pass
@@ -944,7 +943,7 @@ def process_easy_apply(driver, cfg: dict, ai=None, job_context: dict = None) -> 
                 log.warning(f"  {len(errors)} errors — refilling (attempt {consecutive_errors}/{max_consecutive_errors})")
 
                 if consecutive_errors >= max_consecutive_errors:
-                    log.warning(f"  Too many unfillable errors. Discarding application.")
+                    log.warning("  Too many unfillable errors. Discarding application.")
                     discard_application(driver)
                     return False
 
@@ -957,7 +956,7 @@ def process_easy_apply(driver, cfg: dict, ai=None, job_context: dict = None) -> 
                     # Check if errors persist after refill
                     still_errors = modal.find_elements(By.CSS_SELECTOR, '[class*="error"]')
                     if still_errors:
-                        log.warning(f"  Errors persist after refill. Discarding.")
+                        log.warning("  Errors persist after refill. Discarding.")
                         discard_application(driver)
                         return False
                 else:
@@ -1199,7 +1198,7 @@ def get_external_apply_url(driver) -> str | None:
                 txt = btn.text.strip().lower()
                 if ("apply" in txt and "easy" not in txt and btn.is_displayed()):
                     # Click and check if it opens a new tab/redirects
-                    onclick = btn.get_attribute("onclick") or ""
+                    btn.get_attribute("onclick") or ""
                     data_url = btn.get_attribute("data-apply-url") or ""
                     if data_url:
                         return data_url

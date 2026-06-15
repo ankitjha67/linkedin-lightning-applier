@@ -14,7 +14,6 @@ they cause runtime errors:
 import logging
 import os
 from pathlib import Path
-from typing import Optional
 
 log = logging.getLogger("lla.config_validator")
 

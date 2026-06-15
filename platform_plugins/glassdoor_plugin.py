@@ -10,7 +10,7 @@ import logging
 import re
 import time
 from typing import Optional
-from urllib.parse import urlencode, quote_plus
+from urllib.parse import urlencode
 
 from .base import JobPlatform
 
@@ -97,9 +97,6 @@ class GlassdoorPlugin(JobPlatform):
 
     def build_search_url(self, cfg: dict, term: str, location: str) -> str:
         loc_short = location.split(",")[0].strip()
-        # Glassdoor uses a specific URL format
-        term_slug = quote_plus(term)
-        loc_slug = quote_plus(loc_short)
         params = {
             "sc.keyword": term,
             "locT": "C",

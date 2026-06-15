@@ -18,7 +18,6 @@ import logging
 import re
 import time
 from pathlib import Path
-from urllib.parse import urlparse
 
 log = logging.getLogger("lla.careers")
 
@@ -140,7 +139,7 @@ class CareersScanner:
     def _scan_company(self, company: dict) -> list[dict]:
         """Scan a single company using its ATS API or scraping."""
         ats = company.get("ats", "").lower()
-        name = company.get("name", "")
+        company.get("name", "")
 
         if ats == "greenhouse":
             return self._scan_greenhouse(company)

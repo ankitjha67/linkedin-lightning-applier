@@ -467,7 +467,7 @@ class OfferWarRoom:
             )
 
         user_prompt = (
-            f"Offers to compare:\n\n" + "\n\n".join(offers_text) + "\n\n"
+            "Offers to compare:\n\n" + "\n\n".join(offers_text) + "\n\n"
             f"Weights: {json.dumps(weights)}\n\n"
             f"Score each offer on each dimension (1-10)."
         )
@@ -501,7 +501,7 @@ class OfferWarRoom:
             base = o.get("base_salary", 0) or 0
             comp_score = round((base / max_salary) * 10, 1) if max_salary else 5
             has_remote = "remote" in (o.get("remote_policy", "") or "").lower()
-            has_equity = bool(o.get("equity", ""))
+            bool(o.get("equity", ""))
 
             scores[o["job_id"]] = {
                 "compensation": min(10, comp_score),

@@ -6,9 +6,8 @@ Exports to CSV automatically.
 """
 
 import csv
-import json
 import sqlite3
-from datetime import datetime, date, timedelta
+from datetime import datetime, date
 from pathlib import Path
 
 

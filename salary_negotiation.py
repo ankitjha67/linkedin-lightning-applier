@@ -64,14 +64,14 @@ class SalaryNegotiator:
     # Public API
     # ------------------------------------------------------------------
 
-    def generate_brief(self, job_id, title, company):
+    def generate_brief(self, job_id, title, company, location=""):
         """Build a complete negotiation brief for the given job and persist it."""
         if not self.enabled:
             logger.debug("SalaryNegotiator is disabled; skipping brief generation.")
             return None
 
         try:
-            market = self.get_market_rate(title)
+            market = self.get_market_rate(title, location)
             company_range = self.get_company_range(company)
             leverage = self.generate_leverage_points(title, company, market)
             current_salary = self.cfg.get("salary_negotiation", {}).get("current_salary")
@@ -99,28 +99,30 @@ class SalaryNegotiator:
             logger.error("Error generating negotiation brief for %s: %s", job_id, exc)
             return None
 
-    def get_market_rate(self, title):
+    def get_market_rate(self, title, location=""):
         """Look up market salary data from the salary_data table."""
         try:
-            rows = self.state.conn.execute(
-                """SELECT salary_min, salary_max, salary_max
-                   FROM salary_data
-                   WHERE LOWER(title) LIKE ? AND LOWER(location) LIKE ?
-                   ORDER BY updated_at DESC LIMIT 5""",
-                (f"%{title.lower()}%", f"%{location.lower()}%"),
-            ).fetchall()
+            rows = []
+            if location:
+                rows = self.state.conn.execute(
+                    """SELECT salary_min, salary_max, salary_max
+                       FROM salary_data
+                       WHERE LOWER(title) LIKE ? AND LOWER(location) LIKE ?
+                       ORDER BY collected_at DESC LIMIT 5""",
+                    (f"%{title.lower()}%", f"%{location.lower()}%"),
+                ).fetchall()
 
             if not rows:
                 rows = self.state.conn.execute(
                     """SELECT salary_min, salary_max, salary_max
                        FROM salary_data
                        WHERE LOWER(title) LIKE ?
-                       ORDER BY updated_at DESC LIMIT 5""",
+                       ORDER BY collected_at DESC LIMIT 5""",
                     (f"%{title.lower()}%",),
                 ).fetchall()
 
             if not rows:
-                logger.warning("No market data found for '%s' in '%s'.", title)
+                logger.warning("No market data found for '%s' in '%s'.", title, location)
                 return {"min": None, "max": None, "median": None}
 
             avg_min = sum(r[0] for r in rows if r[0]) / max(sum(1 for r in rows if r[0]), 1)
@@ -139,7 +141,7 @@ class SalaryNegotiator:
                 """SELECT salary_min, salary_max, salary_max
                    FROM salary_data
                    WHERE LOWER(company) LIKE ?
-                   ORDER BY updated_at DESC LIMIT 10""",
+                   ORDER BY collected_at DESC LIMIT 10""",
                 (f"%{company.lower()}%",),
             ).fetchall()
 
@@ -244,30 +246,26 @@ class SalaryNegotiator:
     # ------------------------------------------------------------------
 
     def _save_brief(self, brief):
-        """Persist the negotiation brief to the database."""
-        try:
-            market = brief.get("market_rate", {})
-            company = brief.get("company_range", {})
-            counter = brief.get("counter_offer", {})
-            leverage_json = json.dumps(brief.get("leverage_points", []))
+        """Persist the negotiation brief to the negotiation_briefs table.
 
+        Schema: job_id, company, title, market_rate, company_range,
+                leverage_points, counter_offer, generated_at.
+        Structured dicts are serialized to JSON text.
+        """
+        try:
             self.state.conn.execute(
                 """INSERT OR REPLACE INTO negotiation_briefs
-                   (job_id, title, company,
-                    market_rate,
-                    company_range,
-                    leverage_points,
-                    counter_offer,
-                    leverage_points, generated_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                   (job_id, company, title, market_rate, company_range,
+                    leverage_points, counter_offer, generated_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
-                    brief["job_id"], brief["title"], brief["company"], brief["location"],
-                    market.get("min"), market.get("max"), market.get("median"),
-                    company.get("min"), company.get("max"),
-                    leverage_json,
-                    counter.get("min"), counter.get("target"), counter.get("max"),
-                    brief.get("leverage_points", ""),
-                    datetime.now(timezone.utc).isoformat(),
+                    brief["job_id"], brief["company"], brief["title"],
+                    json.dumps(brief.get("market_rate", {})),
+                    json.dumps(brief.get("company_range", {})),
+                    brief.get("leverage_points", "") if isinstance(brief.get("leverage_points"), str)
+                        else json.dumps(brief.get("leverage_points", [])),
+                    json.dumps(brief.get("counter_offer", {})),
+                    brief.get("generated_at", datetime.now(timezone.utc).isoformat()),
                 ),
             )
             self.state.conn.commit()
@@ -282,7 +280,7 @@ class SalaryNegotiator:
             "=" * 60,
             f"Role:     {brief['title']}",
             f"Company:  {brief['company']}",
-            f"Location: {brief['location']}",
+            f"Location: {brief.get('location', 'N/A')}",
             "",
             "--- Market Rate ---",
         ]

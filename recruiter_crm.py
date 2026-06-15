@@ -8,7 +8,7 @@ strategies for warm contacts.
 
 import logging
 import math
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 
@@ -160,7 +160,7 @@ class RecruiterCRM:
                 most_recent = created
 
         # Response rate bonus
-        total_interactions = len(interactions)
+        len(interactions)
         response_bonus = response_count * 0.3
 
         # Recency bonus: if most recent interaction is within recency_bonus_days

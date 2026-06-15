@@ -9,7 +9,6 @@ Actionable career intelligence for upskilling decisions.
 
 import logging
 import re
-from collections import defaultdict
 
 log = logging.getLogger("lla.skill_gap")
 

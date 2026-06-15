@@ -8,7 +8,6 @@ Generates 2-week implementation plans for BUILD projects.
 
 import json
 import logging
-from datetime import datetime
 
 log = logging.getLogger("lla.portfolio_evaluator")
 

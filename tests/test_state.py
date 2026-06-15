@@ -7,7 +7,6 @@ import sqlite3
 import sys
 import tempfile
 import unittest
-from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from state import State
@@ -423,7 +422,7 @@ class TestStateMigration(unittest.TestCase):
         # Second init should not fail (migration is idempotent)
         state2 = State(self.db_path)
         # Verify match_score column exists in applied_jobs
-        row = state2.conn.execute(
+        state2.conn.execute(
             "SELECT match_score FROM applied_jobs LIMIT 0"
         ).fetchone()
         state2.close()
