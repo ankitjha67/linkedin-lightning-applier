@@ -1,0 +1,74 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "linkedin-lightning-applier"
+version = "2.5.0"
+description = "Autonomous AI job-search platform — applies, scores, tailors resumes, messages recruiters, and tracks everything. 52 features, MCP-ready."
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.10"
+authors = [{ name = "Ankit Kumar" }]
+keywords = [
+    "job-search", "linkedin", "automation", "ai", "llm", "mcp",
+    "resume", "ats", "selenium", "openrouter",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "License :: OSI Approved :: MIT License",
+    "Topic :: Office/Business",
+    "Topic :: Internet :: WWW/HTTP :: Browsers",
+]
+dependencies = [
+    "undetected-chromedriver>=3.5.0",
+    "selenium>=4.15.0",
+    "PyYAML>=6.0",
+    "openai>=1.30.0",
+    "requests>=2.31.0",
+    "beautifulsoup4>=4.12.0",
+]
+
+[project.optional-dependencies]
+# AI providers
+anthropic = ["anthropic>=0.25.0"]
+# Resume / cover-letter PDF generation
+documents = ["fpdf2>=2.7.0", "python-docx>=1.0.0"]
+# Web dashboard + SaaS web app + metrics endpoint
+web = ["flask>=3.0.0"]
+# Model Context Protocol server (Claude Code / Claude Desktop control)
+mcp = ["mcp>=1.0.0"]
+# Google Jobs structured scraping
+serpapi = ["google-search-results>=2.4.0"]
+# Everything
+all = [
+    "anthropic>=0.25.0",
+    "fpdf2>=2.7.0",
+    "python-docx>=1.0.0",
+    "flask>=3.0.0",
+    "mcp>=1.0.0",
+]
+dev = ["pytest>=8.0", "ruff>=0.4"]
+
+[project.scripts]
+lla = "cli:main"
+
+[project.urls]
+Homepage = "https://github.com/ankitjha67/linkedin-lightning-applier"
+Repository = "https://github.com/ankitjha67/linkedin-lightning-applier"
+Issues = "https://github.com/ankitjha67/linkedin-lightning-applier/issues"
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+ignore = ["E501", "E722"]
+
+[tool.hatch.build.targets.wheel]
+include = ["*.py", "platform_plugins/**", "webapp/**", "docker/**", "companies.json"]

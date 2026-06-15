@@ -308,6 +308,11 @@ try:
 except ImportError:
     PluginLoader = None
 
+try:
+    from careers_scanner import CareersScanner
+except ImportError:
+    CareersScanner = None
+
 
 # ===================================================================
 shutdown_requested = False
@@ -712,7 +717,8 @@ def process_page(drv, cfg: dict, st: State, sched: dict,
 def run_cycle(drv, cfg: dict, st: State, ai=None,
               scorer=None, tailor=None, ext_applier=None,
               messenger=None, alert_mgr=None, salary_eng=None,
-              prep_gen=None, scheduler=None, google_scraper=None):
+              prep_gen=None, scheduler=None, google_scraper=None,
+              careers=None):
     log = logging.getLogger("lla")
     sc = cfg.get("search", {})
     sched = cfg.get("scheduling", {})
@@ -747,6 +753,20 @@ def run_cycle(drv, cfg: dict, st: State, ai=None,
         if not login(drv, cfg):
             log.error("Re-login failed. Skipping cycle.")
             return
+
+    # CAREERS-PAGE SCANNING (curated company ATS pages — runs first)
+    if careers and careers.enabled:
+        try:
+            log.info("🏢 Scanning curated company careers pages...")
+            new_jobs = careers.scan(score_jobs=True)
+            if new_jobs and alert_mgr and alert_mgr.enabled:
+                try:
+                    alert_mgr.send_error(careers.get_scan_summary(new_jobs))  # reuse channel
+                except Exception:
+                    pass
+            log.info(f"   Careers scan: {len(new_jobs)} matching jobs found")
+        except Exception as e:
+            log.warning(f"Careers scan error: {e}")
 
     # GOOGLE JOBS SCRAPING (before LinkedIn search)
     if google_scraper and google_scraper.enabled:
@@ -932,13 +952,12 @@ def run_forever(config_path: str):
 
     # Load plugins
     plugin_registry = None
+    plugin_count = 0
     if PluginLoader:
         try:
             loader = PluginLoader(cfg)
             plugin_registry = loader.load_all()
-            loaded = plugin_registry.get_loaded_plugins()
-            if loaded:
-                features.append(f"Plugins ({len(loaded)})")
+            plugin_count = len(plugin_registry.get_loaded_plugins())
         except Exception as e:
             log.debug(f"Plugin loading failed: {e}")
 
@@ -966,6 +985,7 @@ def run_forever(config_path: str):
     sla_tracker = EmployerSLATracker(cfg, state) if EmployerSLATracker else None
     quality = QualityGate(ai_answerer, cfg, state) if QualityGate else None
     career_sim = CareerSimulator(ai_answerer, cfg, state) if CareerSimulator else None
+    careers = CareersScanner(cfg, state, ai_answerer, scorer) if CareersScanner else None
 
     # Start metrics server
     if metrics_collector and metrics_collector.enabled:
@@ -1021,6 +1041,8 @@ def run_forever(config_path: str):
     if sla_tracker and sla_tracker.enabled: features.append("Employer SLA")
     if quality and quality.enabled: features.append("Quality Gate")
     if career_sim and career_sim.enabled: features.append("Career Simulator")
+    if careers and careers.enabled: features.append("Careers Scanner")
+    if plugin_count: features.append(f"Plugins ({plugin_count})")
     if dash and dash.enabled: features.append(f"Dashboard (:{dash.port})")
     if features:
         log.info(f"🚀 Features: {', '.join(features)}")
@@ -1110,7 +1132,7 @@ def run_forever(config_path: str):
                      ext_applier=ext_applier, messenger=messenger,
                      alert_mgr=alert_mgr, salary_eng=salary_eng,
                      prep_gen=prep_gen, scheduler=scheduler,
-                     google_scraper=google_scraper)
+                     google_scraper=google_scraper, careers=careers)
             errors = 0
         except Exception as e:
             errors += 1

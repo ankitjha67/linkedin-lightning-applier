@@ -797,3 +797,35 @@ career_simulator:
 plugins:
   enabled: true
   disabled: []                   # List of plugin names to skip loading
+
+# ═══════════════════════════════════════════════════════════════
+# CAREERS SCANNER — Curated company careers-page scanning
+# ═══════════════════════════════════════════════════════════════
+# Scans companies.json via free ATS APIs (Greenhouse/Lever/Ashby) and
+# scraping. A targeted, company-first complement to LinkedIn/Google search.
+careers_scanner:
+  enabled: false                 # Off by default — opt in for nightly company scans
+  companies_file: "companies.json"
+  max_companies_per_scan: 30
+  min_score: 60                  # Only surface jobs scoring above this
+  request_delay_seconds: 2.0     # Politeness delay between companies
+  regions: []                    # Filter by region (e.g. ["EU", "Remote"]); empty = all
+  title_keywords: []             # Filter by title keywords; empty = all titles
+
+# ═══════════════════════════════════════════════════════════════
+# AI — New providers: openrouter (free chain) + claude_cli (no API key)
+# ═══════════════════════════════════════════════════════════════
+# These extend the existing `ai:` section. Example openrouter config:
+#   ai:
+#     enabled: true
+#     provider: "openrouter"
+#     api_key: "sk-or-..."        # Free key from openrouter.ai
+#     openrouter_fallback_models:  # Free chain — auto-falls-back on rate limit
+#       - "meta-llama/llama-3.3-70b-instruct:free"
+#       - "google/gemma-2-9b-it:free"
+#
+# Example claude_cli config (uses the `claude` binary, no API key):
+#   ai:
+#     enabled: true
+#     provider: "claude_cli"
+#     claude_cli_model: "sonnet"   # or "opus", "haiku", "" for default
