@@ -14,7 +14,7 @@ import re
 import time
 import random
 from typing import Optional
-from urllib.parse import urlencode, quote_plus
+from urllib.parse import urlencode
 
 log = logging.getLogger("lla.google_jobs")
 

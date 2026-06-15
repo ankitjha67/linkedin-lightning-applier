@@ -61,11 +61,11 @@ class ATSStatusScraper:
                     company TEXT,
                     title TEXT,
                     portal_url TEXT,
-                    portal_type TEXT,
+                    portal_url TEXT,
                     current_status TEXT DEFAULT 'applied',
                     previous_status TEXT,
                     last_checked TEXT,
-                    status_changed_at TEXT,
+                    last_checked TEXT,
                     created_at TEXT
                 )"""
             )
@@ -91,14 +91,14 @@ class ATSStatusScraper:
                 logger.info("Application %s already tracked.", job_id)
                 return True
 
-            portal_type = self._detect_portal_type(portal_url)
+            portal_url = self._detect_portal_url(portal_url)
             now = datetime.now(timezone.utc).isoformat()
             self.state.conn.execute(
                 """INSERT INTO ats_status
-                   (job_id, company, title, portal_url, portal_type,
+                   (job_id, company, title, portal_url, portal_url,
                     current_status, last_checked, created_at)
                    VALUES (?, ?, ?, ?, ?, 'applied', ?, ?)""",
-                (job_id, company, title, portal_url, portal_type, now, now),
+                (job_id, company, title, portal_url, portal_url, now, now),
             )
             self.state.conn.commit()
             logger.info("Registered application %s (%s) for ATS tracking.", job_id, company)
@@ -136,22 +136,22 @@ class ATSStatusScraper:
         """Visit a single portal URL, extract status, and update if changed."""
         try:
             row = self.state.conn.execute(
-                "SELECT portal_type, current_status FROM ats_status WHERE job_id = ?",
+                "SELECT portal_url, current_status FROM ats_status WHERE job_id = ?",
                 (job_id,),
             ).fetchone()
             if not row:
                 logger.warning("Job %s not found in tracking table.", job_id)
                 return None
 
-            portal_type, old_status = row
+            portal_url, old_status = row
 
             driver.get(portal_url)
 
-            if portal_type == "greenhouse":
+            if portal_url == "greenhouse":
                 new_status = self._scrape_greenhouse_status(driver)
-            elif portal_type == "workday":
+            elif portal_url == "workday":
                 new_status = self._scrape_workday_status(driver)
-            elif portal_type == "lever":
+            elif portal_url == "lever":
                 new_status = self._scrape_lever_status(driver)
             else:
                 new_status = self._scrape_generic_status(driver)
@@ -167,7 +167,7 @@ class ATSStatusScraper:
                     """UPDATE ats_status
                        SET previous_status = current_status,
                            current_status = ?,
-                           status_changed_at = ?
+                           last_checked = ?
                        WHERE job_id = ?""",
                     (new_status, now, job_id),
                 )
@@ -183,10 +183,10 @@ class ATSStatusScraper:
         """Return recent status changes."""
         try:
             rows = self.state.conn.execute(
-                """SELECT job_id, company, title, previous_status, current_status, status_changed_at
+                """SELECT job_id, company, title, previous_status, current_status, last_checked
                    FROM ats_status
-                   WHERE status_changed_at IS NOT NULL
-                   ORDER BY status_changed_at DESC LIMIT 50"""
+                   WHERE last_checked IS NOT NULL
+                   ORDER BY last_checked DESC LIMIT 50"""
             ).fetchall()
             return [
                 {
@@ -274,7 +274,7 @@ class ATSStatusScraper:
         return None
 
     @staticmethod
-    def _detect_portal_type(url):
+    def _detect_portal_url(url):
         """Detect ATS type from the portal URL."""
         if not url:
             return "unknown"

@@ -18,12 +18,6 @@ def simulate_activity(driver, cfg: dict):
     Run simulated human activity on LinkedIn.
     Call between apply cycles to make account look natural.
     """
-    from selenium.webdriver.common.by import By
-    from selenium.webdriver.common.keys import Keys
-    from selenium.common.exceptions import (
-        NoSuchElementException, ElementClickInterceptedException,
-        StaleElementReferenceException, ElementNotInteractableException,
-    )
 
     sim_cfg = cfg.get("activity_simulation", {})
     if not sim_cfg.get("enabled", False):
@@ -75,7 +69,6 @@ def simulate_activity(driver, cfg: dict):
 
 def _scroll_feed(driver):
     """Visit and scroll through the LinkedIn feed."""
-    from selenium.webdriver.common.by import By
 
     log.debug("  📜 Scrolling feed...")
     driver.get("https://www.linkedin.com/feed/")

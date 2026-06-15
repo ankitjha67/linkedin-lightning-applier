@@ -10,7 +10,6 @@ import logging
 import time
 import random
 from datetime import datetime, timedelta
-from typing import Optional
 
 log = logging.getLogger("lla.messenger")
 
@@ -161,9 +160,7 @@ Keep it short (3-5 sentences), genuine, and specific."""
                       recruiter_name: str = "") -> bool:
         """Navigate to recruiter's profile and send a message."""
         from selenium.webdriver.common.by import By
-        from selenium.webdriver.common.keys import Keys
         from selenium.common.exceptions import (
-            NoSuchElementException, TimeoutException,
             ElementClickInterceptedException,
         )
 

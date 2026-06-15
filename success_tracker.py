@@ -9,11 +9,9 @@ Uses logistic regression trained on historical data to predict response
 probability for new applications. Exports insights to CSV.
 """
 
-import json
 import logging
 import math
-from collections import defaultdict
-from datetime import datetime, date
+from datetime import datetime
 from typing import Optional
 
 log = logging.getLogger("lla.success_tracker")

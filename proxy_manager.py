@@ -247,7 +247,7 @@ class ProxyManager:
             try:
                 import socks  # noqa: F401 — PySocks
             except ImportError:
-                log.error(f"SOCKS proxy requires PySocks: pip install requests[socks]")
+                log.error("SOCKS proxy requires PySocks: pip install requests[socks]")
                 return False
 
         try:

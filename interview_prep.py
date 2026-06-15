@@ -7,7 +7,6 @@ mapped to requirements. Saved per job in the database.
 """
 
 import logging
-from typing import Optional
 
 log = logging.getLogger("lla.interview_prep")
 

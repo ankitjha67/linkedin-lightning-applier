@@ -9,7 +9,6 @@ and trend direction. Generates weekly briefs and market heat maps.
 import json
 import logging
 from datetime import datetime, timedelta
-from typing import Optional
 
 log = logging.getLogger("lla.market_pulse")
 

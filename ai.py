@@ -14,9 +14,7 @@ Flow:
 All providers use the OpenAI client library (they all support OpenAI-compatible APIs).
 """
 
-import re
 import json
-import time
 import logging
 import hashlib
 import sqlite3
@@ -27,27 +25,39 @@ log = logging.getLogger("lla.ai")
 
 # Provider base URLs — all OpenAI-compatible
 PROVIDER_URLS = {
-    "openai":    "https://api.openai.com/v1",
-    "anthropic": "https://api.anthropic.com/v1",    # Claude supports OpenAI-compat
-    "gemini":    "https://generativelanguage.googleapis.com/v1beta/openai",
-    "deepseek":  "https://api.deepseek.com",
-    "groq":      "https://api.groq.com/openai/v1",
-    "together":  "https://api.together.xyz/v1",
-    "ollama":    "http://localhost:11434/v1",
-    "lmstudio":  "http://localhost:1234/v1",
+    "openai":     "https://api.openai.com/v1",
+    "anthropic":  "https://api.anthropic.com/v1",    # Claude supports OpenAI-compat
+    "gemini":     "https://generativelanguage.googleapis.com/v1beta/openai",
+    "deepseek":   "https://api.deepseek.com",
+    "groq":       "https://api.groq.com/openai/v1",
+    "together":   "https://api.together.xyz/v1",
+    "openrouter": "https://openrouter.ai/api/v1",    # Free model fallback chain
+    "ollama":     "http://localhost:11434/v1",
+    "lmstudio":   "http://localhost:1234/v1",
+    # claude_cli is a subprocess provider — no URL
 }
 
 # Default models per provider
 DEFAULT_MODELS = {
-    "openai":    "gpt-4o-mini",
-    "anthropic": "claude-sonnet-4-20250514",
-    "gemini":    "gemini-2.0-flash",
-    "deepseek":  "deepseek-chat",
-    "groq":      "llama-3.1-70b-versatile",
-    "together":  "meta-llama/Llama-3.1-70B-Instruct-Turbo",
-    "ollama":    "llama3.1",
-    "lmstudio":  "local-model",
+    "openai":     "gpt-4o-mini",
+    "anthropic":  "claude-sonnet-4-20250514",
+    "gemini":     "gemini-2.0-flash",
+    "deepseek":   "deepseek-chat",
+    "groq":       "llama-3.1-70b-versatile",
+    "together":   "meta-llama/Llama-3.1-70B-Instruct-Turbo",
+    "openrouter": "meta-llama/llama-3.3-70b-instruct:free",
+    "ollama":     "llama3.1",
+    "lmstudio":   "local-model",
+    "claude_cli": "",  # empty = Claude Code's default model
 }
+
+# OpenRouter free-tier fallback chain — tried in order on rate limit (zero cost)
+OPENROUTER_FREE_CHAIN = [
+    "meta-llama/llama-3.3-70b-instruct:free",
+    "nvidia/llama-3.1-nemotron-70b-instruct:free",
+    "google/gemma-2-9b-it:free",
+    "qwen/qwen-2.5-72b-instruct:free",
+]
 
 
 class AIAnswerer:
@@ -66,7 +76,7 @@ class AIAnswerer:
 
         # Primary provider
         self.provider = ai_cfg.get("provider", "openai").lower()
-        self.api_key = ai_cfg.get("api_key", "")
+        self.api_key = ai_cfg.get("api_key", "") or self._key_from_env(self.provider)
         self.model = ai_cfg.get("model", "") or DEFAULT_MODELS.get(self.provider, "")
         self.base_url = ai_cfg.get("base_url", "") or PROVIDER_URLS.get(self.provider, "")
         self.temperature = ai_cfg.get("temperature", 0.3)
@@ -78,6 +88,12 @@ class AIAnswerer:
         self.fallback_provider = ai_cfg.get("fallback_provider", "").lower()
         self.fallback_model = ai_cfg.get("fallback_model", "") or DEFAULT_MODELS.get(self.fallback_provider, "")
         self.fallback_base_url = ai_cfg.get("fallback_base_url", "") or PROVIDER_URLS.get(self.fallback_provider, "")
+
+        # OpenRouter free-model fallback chain (zero cost) — tried in order on rate limit
+        self.openrouter_chain = ai_cfg.get("openrouter_fallback_models", OPENROUTER_FREE_CHAIN)
+
+        # Claude CLI options (uses the `claude` binary — no API key)
+        self.claude_cli_model = ai_cfg.get("claude_cli_model", "")
 
         # CV / profile context
         self.profile_context = self._build_profile_context(cfg)
@@ -95,7 +111,7 @@ class AIAnswerer:
             log.info(f"AI enabled: primary={self.provider}/{self.model} @ {self.base_url}")
             if self.fallback_enabled and self.fallback_provider:
                 log.info(f"  Fallback: {self.fallback_provider}/{self.fallback_model} @ {self.fallback_base_url}")
-            if not self.api_key and self.provider not in ("ollama", "lmstudio"):
+            if not self.api_key and self.provider not in ("ollama", "lmstudio", "claude_cli"):
                 log.warning(f"  No API key set for {self.provider}!")
 
     def _init_cache_table(self):
@@ -112,6 +128,30 @@ class AIAnswerer:
         """)
         self.db.commit()
 
+    @staticmethod
+    def _key_from_env(provider: str) -> str:
+        """Fall back to a per-provider environment variable for the API key.
+
+        Lets the key live in the environment (safer for cron/Docker) instead of
+        being written into config.yaml. Checks provider-specific names first,
+        e.g. GEMINI_API_KEY / GOOGLE_API_KEY for the 'gemini' provider.
+        """
+        import os
+        candidates = {
+            "gemini":     ["GEMINI_API_KEY", "GOOGLE_API_KEY"],
+            "openai":     ["OPENAI_API_KEY"],
+            "anthropic":  ["ANTHROPIC_API_KEY"],
+            "deepseek":   ["DEEPSEEK_API_KEY"],
+            "groq":       ["GROQ_API_KEY"],
+            "together":   ["TOGETHER_API_KEY"],
+            "openrouter": ["OPENROUTER_API_KEY"],
+        }.get(provider, [f"{provider.upper()}_API_KEY"])
+        for name in candidates:
+            val = os.environ.get(name, "")
+            if val:
+                return val
+        return ""
+
     @property
     def client(self):
         """Lazy-init the primary OpenAI-compatible client."""
@@ -123,11 +163,17 @@ class AIAnswerer:
     def fallback_client(self):
         """Lazy-init the fallback client."""
         if self._fallback_client is None and self.fallback_enabled and self.fallback_provider:
-            self._fallback_client = self._make_client(self.fallback_provider, "", self.fallback_base_url)
+            fb_key = self.cfg.get("ai", {}).get("fallback_api_key", "") or self._key_from_env(self.fallback_provider)
+            self._fallback_client = self._make_client(self.fallback_provider, fb_key, self.fallback_base_url)
         return self._fallback_client
 
     def _make_client(self, provider: str, api_key: str, base_url: str):
         """Create an OpenAI-compatible client for any provider."""
+        # claude_cli uses a subprocess — no HTTP client needed
+        if provider == "claude_cli":
+            self._use_anthropic = False
+            return "claude_cli"  # sentinel — truthy so callers proceed
+
         try:
             from openai import OpenAI
         except ImportError:
@@ -304,6 +350,17 @@ RULES:
         parts.append("\nAnswer (concise, no explanation):")
         return "\n".join(parts)
 
+    def generate(self, prompt: str, system: str = "") -> str:
+        """Single-prompt generation convenience wrapper around _call_llm.
+
+        Returns the model's text response, or "" if AI is disabled/fails.
+        Used by modules that build a complete prompt string themselves
+        (e.g. multi_language, salary_negotiation).
+        """
+        if not self.enabled:
+            return ""
+        return self._call_llm(system or "You are a helpful career assistant.", prompt)
+
     def _call_llm(self, system: str, user: str) -> str:
         """Call primary LLM, fall back to secondary if primary fails."""
 
@@ -328,6 +385,14 @@ RULES:
     def _call_provider(self, client, provider: str, model: str,
                        system: str, user: str) -> str:
         """Call a single LLM provider. Returns empty string on failure."""
+        # Claude CLI — subprocess, no client needed
+        if provider == "claude_cli":
+            return self._call_claude_cli(system, user)
+
+        # OpenRouter — free-model fallback chain
+        if provider == "openrouter":
+            return self._call_openrouter(client, model, system, user)
+
         if not client:
             return ""
 
@@ -379,6 +444,94 @@ RULES:
             return response.content[0].text.strip()
         except Exception as e:
             log.warning(f"Anthropic call failed: {e}")
+            return ""
+
+    def _call_openrouter(self, client, model: str, system: str, user: str) -> str:
+        """Call OpenRouter with a free-model fallback chain (zero cost).
+
+        Tries the primary model, then each model in openrouter_chain on
+        rate-limit/quota errors. All free-tier models — no credit card needed.
+        """
+        if not client:
+            return ""
+        models = [model] + [m for m in self.openrouter_chain if m != model]
+        for idx, m in enumerate(models):
+            try:
+                response = client.chat.completions.create(
+                    model=m,
+                    messages=[
+                        {"role": "system", "content": system},
+                        {"role": "user", "content": user},
+                    ],
+                    temperature=self.temperature,
+                    max_tokens=self.max_tokens,
+                )
+                raw = response.choices[0].message.content
+                if raw is None:
+                    continue
+                answer = raw.strip()
+                if "<think>" in answer:
+                    import re as _re
+                    answer = _re.sub(r'<think>.*?</think>', '', answer, flags=_re.DOTALL).strip()
+                if answer:
+                    log.debug(f"  [openrouter/{m}] (model {idx+1}/{len(models)}) → {answer[:80]}")
+                    return answer
+            except Exception as e:
+                msg = str(e).lower()
+                if any(x in msg for x in ("rate", "quota", "429", "limit")):
+                    log.info(f"  OpenRouter {m} rate-limited — trying next free model...")
+                    continue
+                log.warning(f"  openrouter/{m} failed: {e}")
+                continue
+        log.warning("  All OpenRouter free models exhausted/failed")
+        return ""
+
+    def _call_claude_cli(self, system: str, user: str) -> str:
+        """Call the local `claude` CLI binary as the LLM backend (no API key).
+
+        Uses --strict-mcp-config to suppress MCP servers in the subprocess,
+        reducing context overhead. Requires Claude Code installed + authenticated.
+        """
+        import subprocess
+        import json as _json
+
+        cmd = [
+            "claude", "--print", "--output-format", "json",
+            "--mcp-config", '{"mcpServers":{}}', "--strict-mcp-config",
+        ]
+        if system:
+            cmd += ["--append-system-prompt", system]
+        if self.claude_cli_model:
+            cmd += ["--model", self.claude_cli_model]
+
+        try:
+            result = subprocess.run(
+                cmd, input=user, capture_output=True, text=True,
+                timeout=max(self.timeout, 120),
+            )
+        except FileNotFoundError:
+            log.error("claude binary not found in PATH. Install Claude Code and run 'claude auth login'.")
+            return ""
+        except subprocess.TimeoutExpired:
+            log.warning("claude CLI timed out")
+            return ""
+
+        if result.returncode != 0:
+            log.warning(f"claude CLI exited {result.returncode}: {result.stderr.strip()[:200]}")
+            return ""
+
+        try:
+            data = _json.loads(result.stdout)
+            if isinstance(data, dict):
+                text = data.get("result", "")
+            elif isinstance(data, list):
+                evt = next((e for e in data if isinstance(e, dict) and e.get("type") == "result"), None)
+                text = evt["result"] if evt else ""
+            else:
+                text = ""
+            return (text or "").strip()
+        except (ValueError, KeyError, TypeError) as e:
+            log.warning(f"claude CLI unexpected output ({e})")
             return ""
 
     def _match_to_option(self, answer: str, options: list) -> str:

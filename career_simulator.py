@@ -265,7 +265,7 @@ class CareerSimulator:
         Checks offer for visa_support field and infers timeline.
         """
         visa_support = offer.get("visa_support", "")
-        location = offer.get("location", "")
+        offer.get("location", "")
 
         if not visa_support:
             return {"required": False, "detail": "No visa information provided"}
@@ -321,7 +321,7 @@ class CareerSimulator:
         """
         title = offer.get("title", "").lower()
         company_type = offer.get("company_type", "").lower()
-        industry = offer.get("industry", "").lower()
+        offer.get("industry", "").lower()
         description = offer.get("description", "").lower()
 
         skills_map = {

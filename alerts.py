@@ -4,10 +4,8 @@ Notification Alerts — Telegram, Discord, Slack.
 Sends instant notifications on every application, error alerts, and daily summaries.
 """
 
-import json
 import logging
 from datetime import datetime
-from typing import Optional
 
 log = logging.getLogger("lla.alerts")
 

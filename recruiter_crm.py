@@ -8,7 +8,7 @@ strategies for warm contacts.
 
 import logging
 import math
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +27,7 @@ class RecruiterCRM:
         "offer",
     )
 
-    # Weights for each interaction type in score computation
+    # Weights for each interaction type in relationship_score computation
     INTERACTION_WEIGHTS = {
         "applied": 0.1,
         "messaged": 0.15,
@@ -96,7 +96,7 @@ class RecruiterCRM:
             )
             self.state.conn.commit()
 
-            # Recompute the score after every interaction
+            # Recompute the relationship_score after every interaction
             self._update_score(recruiter_name, company)
 
             logger.info(
@@ -111,7 +111,7 @@ class RecruiterCRM:
             return False
 
     def compute_score(self, recruiter_name, company):
-        """Compute a weighted relationship score for a recruiter.
+        """Compute a weighted relationship relationship_score for a recruiter.
 
         Formula:
             base + sum(interaction_weight) + (responses * 0.3) + recency_bonus - decay
@@ -121,7 +121,7 @@ class RecruiterCRM:
             company: Company name.
 
         Returns:
-            Float score (0.0 minimum). Higher is better.
+            Float relationship_score (0.0 minimum). Higher is better.
         """
         if not self.enabled:
             return 0.0
@@ -160,7 +160,7 @@ class RecruiterCRM:
                 most_recent = created
 
         # Response rate bonus
-        total_interactions = len(interactions)
+        len(interactions)
         response_bonus = response_count * 0.3
 
         # Recency bonus: if most recent interaction is within recency_bonus_days
@@ -176,7 +176,7 @@ class RecruiterCRM:
             except (ValueError, TypeError):
                 pass
 
-        # Decay: score degrades over time if no recent interaction
+        # Decay: relationship_score degrades over time if no recent interaction
         decay = 0.0
         if most_recent:
             try:
@@ -191,26 +191,26 @@ class RecruiterCRM:
             except (ValueError, TypeError):
                 pass
 
-        score = max(0.0, base_score + weighted_sum + response_bonus + recency_bonus - decay)
-        return round(score, 2)
+        relationship_score = max(0.0, base_score + weighted_sum + response_bonus + recency_bonus - decay)
+        return round(relationship_score, 2)
 
     def get_top_recruiters(self, limit=20):
-        """Get recruiters ranked by relationship score.
+        """Get recruiters ranked by relationship relationship_score.
 
         Args:
             limit: Maximum number of recruiters to return.
 
         Returns:
-            List of dicts with recruiter_name, company, score, interaction_count, last_interaction.
+            List of dicts with recruiter_name, company, relationship_score, interaction_count, last_interaction.
         """
         if not self.enabled:
             return []
 
         try:
             rows = self.state.conn.execute(
-                """SELECT recruiter_name, company, score, updated_at
+                """SELECT recruiter_name, company, relationship_score, last_interaction
                    FROM recruiter_scores
-                   ORDER BY score DESC
+                   ORDER BY relationship_score DESC
                    LIMIT ?""",
                 (limit,),
             ).fetchall()
@@ -227,7 +227,7 @@ class RecruiterCRM:
             results.append({
                 "recruiter_name": name,
                 "company": company,
-                "score": row["score"],
+                "relationship_score": row["relationship_score"],
                 "interaction_count": interaction_count,
                 "last_interaction": last,
             })
@@ -242,12 +242,12 @@ class RecruiterCRM:
             company: Company name.
 
         Returns:
-            Dict with recruiter info, score, interaction history, and summary.
+            Dict with recruiter info, relationship_score, interaction history, and summary.
         """
         if not self.enabled:
             return {}
 
-        score = self.compute_score(name, company)
+        relationship_score = self.compute_score(name, company)
 
         try:
             interactions = self.state.conn.execute(
@@ -274,9 +274,9 @@ class RecruiterCRM:
             })
 
         # Classify warmth
-        if score >= self.HOT_THRESHOLD:
+        if relationship_score >= self.HOT_THRESHOLD:
             warmth = "hot"
-        elif score >= self.WARM_THRESHOLD:
+        elif relationship_score >= self.WARM_THRESHOLD:
             warmth = "warm"
         else:
             warmth = "cold"
@@ -284,7 +284,7 @@ class RecruiterCRM:
         return {
             "recruiter_name": name,
             "company": company,
-            "score": score,
+            "relationship_score": relationship_score,
             "warmth": warmth,
             "interaction_count": len(history),
             "type_counts": type_counts,
@@ -306,12 +306,12 @@ class RecruiterCRM:
         if not self.enabled:
             return False
 
-        score = self.compute_score(recruiter_name, company)
-        prioritize = score >= self.WARM_THRESHOLD
+        relationship_score = self.compute_score(recruiter_name, company)
+        prioritize = relationship_score >= self.WARM_THRESHOLD
         if prioritize:
             logger.info(
-                "Prioritizing job: warm relationship with %s at %s (score=%.2f)",
-                recruiter_name, company, score,
+                "Prioritizing job: warm relationship with %s at %s (relationship_score=%.2f)",
+                recruiter_name, company, relationship_score,
             )
         return prioritize
 
@@ -353,20 +353,20 @@ class RecruiterCRM:
     # ------------------------------------------------------------------
 
     def _update_score(self, recruiter_name, company):
-        """Recompute and persist the score for a recruiter."""
-        score = self.compute_score(recruiter_name, company)
+        """Recompute and persist the relationship_score for a recruiter."""
+        relationship_score = self.compute_score(recruiter_name, company)
         try:
             now = datetime.now(timezone.utc).isoformat()
             self.state.conn.execute(
-                """INSERT INTO recruiter_scores (recruiter_name, company, score, updated_at)
+                """INSERT INTO recruiter_scores (recruiter_name, company, relationship_score, last_interaction)
                    VALUES (?, ?, ?, ?)
                    ON CONFLICT(recruiter_name, company)
-                   DO UPDATE SET score = ?, updated_at = ?""",
-                (recruiter_name, company, score, now, score, now),
+                   DO UPDATE SET relationship_score = ?, last_interaction = ?""",
+                (recruiter_name, company, relationship_score, now, relationship_score, now),
             )
             self.state.conn.commit()
         except Exception:
-            logger.exception("Failed to update score for %s at %s", recruiter_name, company)
+            logger.exception("Failed to update relationship_score for %s at %s", recruiter_name, company)
 
     def _count_interactions(self, name, company):
         """Count total interactions with a recruiter."""
@@ -402,7 +402,7 @@ class RecruiterCRM:
         return (
             f"I have an existing relationship with recruiter {profile['recruiter_name']} "
             f"at {profile['company']}. Warmth level: {profile['warmth']}. "
-            f"Relationship score: {profile['score']}.\n\n"
+            f"Relationship relationship_score: {profile['relationship_score']}.\n\n"
             f"Interaction history (most recent first):\n"
             + "\n".join(history_summary)
             + "\n\nSuggest a concise, professional outreach strategy for the next touchpoint. "

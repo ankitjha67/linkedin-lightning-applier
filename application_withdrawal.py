@@ -65,7 +65,7 @@ class ApplicationWithdrawer:
             now = datetime.now(timezone.utc).isoformat()
             self.state.conn.execute(
                 """INSERT OR IGNORE INTO withdrawal_queue
-                   (job_id, company, title, reason, status, queued_at)
+                   (job_id, company, title, reason, status, scheduled_at)
                    VALUES (?, ?, ?, ?, 'pending', ?)""",
                 (str(job_id), company, title, reason, now),
             )
@@ -259,7 +259,7 @@ class ApplicationWithdrawer:
             return self.state.conn.execute(
                 """SELECT * FROM withdrawal_queue
                    WHERE status = 'pending'
-                   ORDER BY queued_at ASC"""
+                   ORDER BY scheduled_at ASC"""
             )
         except Exception:
             logger.exception("Failed to fetch pending withdrawals")

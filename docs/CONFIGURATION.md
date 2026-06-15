@@ -635,6 +635,52 @@ Exports all metrics at `http://localhost:9090/metrics` in Prometheus text format
 - **Gauges:** daily_applied, total_applied, recruiters_tracked, visa_sponsors, avg_match_score
 - **Histograms (p50/p95/p99):** cycle_duration_seconds, match_score, ai_latency_ms
 
+## Careers Scanner
+
+```yaml
+careers_scanner:
+  enabled: false                 # Off by default — opt in for nightly company scans
+  companies_file: "companies.json"
+  max_companies_per_scan: 30
+  min_score: 60                  # Only surface jobs scoring above this
+  request_delay_seconds: 2.0     # Politeness delay between companies
+  regions: []                    # Filter: ["EU", "Remote"]; empty = all
+  title_keywords: []             # Filter by title keywords; empty = all
+```
+
+Scans the curated `companies.json` database via free ATS JSON APIs (Greenhouse, Lever, Ashby) with HTML-scraping fallback. A company-first complement to the LinkedIn/Google scrapers — no paid API. Each discovered role is scored with your match scorer; the top matches above `min_score` are surfaced and (if alerts are on) sent to Telegram/Discord/Slack. Edit `companies.json` to add your own target companies — each entry needs `name`, `careers_url`, `ats` (greenhouse/lever/ashby), `location`, and `region`.
+
+## AI Providers — OpenRouter & Claude CLI
+
+Two zero-cost LLM backends extend the existing `ai:` section:
+
+### OpenRouter (free model chain)
+
+```yaml
+ai:
+  enabled: true
+  provider: "openrouter"
+  api_key: "sk-or-..."           # Free key from openrouter.ai (no credit card)
+  openrouter_fallback_models:    # Auto-falls-back on rate limit
+    - "meta-llama/llama-3.3-70b-instruct:free"
+    - "nvidia/llama-3.1-nemotron-70b-instruct:free"
+    - "google/gemma-2-9b-it:free"
+    - "qwen/qwen-2.5-72b-instruct:free"
+```
+
+On a rate-limit/quota error, the bot automatically tries the next free model in the chain. Defaults to the 4-model chain above if `openrouter_fallback_models` is omitted.
+
+### Claude CLI (no API key)
+
+```yaml
+ai:
+  enabled: true
+  provider: "claude_cli"
+  claude_cli_model: "sonnet"     # or "opus", "haiku", "" for Claude's default
+```
+
+Uses your local `claude` binary as the LLM backend — zero API cost if you already have Claude Code installed and authenticated. Requires `claude` in your PATH (verify with `claude --print "hi"`). Runs each call with `--strict-mcp-config` to suppress MCP servers in the subprocess and reduce context overhead.
+
 ## Logging
 
 ```yaml

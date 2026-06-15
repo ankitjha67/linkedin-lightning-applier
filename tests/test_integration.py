@@ -7,13 +7,10 @@ Verifies: config load → state init → scoring → tailoring → tracking → 
 Does NOT require Chrome or Selenium — all browser interactions are mocked.
 """
 
-import json
 import os
 import sys
 import tempfile
 import unittest
-from pathlib import Path
-from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 

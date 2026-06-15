@@ -74,7 +74,7 @@ The bot runs in a continuous loop. Every cycle:
 - **Pipeline State Machine** (`pipeline_manager.py`) — Formal lifecycle states (discovered → evaluated → applied → interviewing → offer) with enforced transitions.
 
 ### Core Foundations
-- **AI Form Filling** — 8 LLM providers: OpenAI, Anthropic Claude, Google Gemini, DeepSeek, Groq, Together, Ollama (local), LM Studio (local). Answers cached in SQLite.
+- **AI Form Filling** — 10 LLM providers: OpenAI, Anthropic Claude, Google Gemini, DeepSeek, Groq, Together, OpenRouter (free model chain), Claude CLI (no API key), Ollama (local), LM Studio (local). Answers cached in SQLite.
 - **Recruiter Tracking** — Names, titles, and LinkedIn URLs from "Meet the hiring team" sections.
 - **Visa Detection** — Positive/negative keyword matching for sponsorship signals.
 - **Ban Prevention** — undetected-chromedriver, daily/cycle caps, randomized delays, active hours, human-like scrolling.
@@ -266,15 +266,22 @@ quality_gate.py         Application quality scoring before submit
 career_simulator.py     5-year career path projection + comparison
 plugin_api.py           Extension framework — custom ATS, platforms, templates, hooks
 plugins/                Community extensions directory (auto-loaded on startup)
-tests/                  199 unit + integration tests
+mcp_server.py           MCP server — 13 tools for Claude Code / Claude Desktop
+tools_layer.py          Protocol-agnostic tool layer (MCP/adapter foundation)
+careers_scanner.py      Curated company careers-page scanner (Greenhouse/Lever/Ashby)
+companies.json          Curated target-company database (30+ companies)
+pyproject.toml          PyPI packaging — `pip install` + `lla` CLI entry point
+tests/                  217 unit + integration tests
 ```
 
-26,814 lines across 75 Python files and 52 features. Includes 199 unit tests.
+29,590 lines across 81 Python files and 55 features. Includes 217 unit tests.
 
 ## AI Providers
 
 | Provider | Cost | Setup |
 |---|---|---|
+| **Claude CLI** | **Free** (uses your Claude Code auth) | `provider: claude_cli` — requires the `claude` binary in PATH |
+| **OpenRouter** | **Free** (4-model fallback chain) | `provider: openrouter` + free key from openrouter.ai |
 | Ollama | Free, local | `ollama pull llama3.1` |
 | LM Studio | Free, local | Load model, click Start Server |
 | Groq | Free tier | Get API key from groq.com |
@@ -285,6 +292,64 @@ tests/                  199 unit + integration tests
 | Together | ~$0.0005/question | together.ai |
 
 Set `provider` and `fallback_provider` in config. The bot tries: keyword matching (free) -> primary AI -> fallback AI.
+
+**Claude CLI** (`provider: claude_cli`) uses your local `claude` binary as the LLM backend — zero API cost if you already have Claude Code. **OpenRouter** (`provider: openrouter`) auto-falls-back through a chain of free models on rate limit — zero cost, no credit card.
+
+## MCP Server (Claude Code / Claude Desktop)
+
+Control the bot with natural language from Claude Code or Claude Desktop:
+
+```bash
+pip install -e '.[mcp]'        # install MCP support
+claude mcp add lla -- python -m mcp_server
+```
+
+Then in any Claude session: *"Score this job for me"*, *"Show my application stats"*, *"Run application forensics"*, *"Generate a market report"*, *"Tailor my resume for this role"*. 13 tools exposed via the Model Context Protocol — all backed by the same engine as the CLI and bot.
+
+## Careers-Page Scanner
+
+A targeted, company-first discovery mode that complements LinkedIn/Google search. Scans a curated `companies.json` (30+ companies, extensible) via **free** ATS JSON APIs (Greenhouse, Lever, Ashby) with HTML-scraping fallback — no paid API needed. Enable with `careers_scanner.enabled: true`. Scores every role with your match scorer and surfaces the top matches.
+
+## Daily Automation
+
+Run one scan cycle per day on a schedule (instead of the continuous loop):
+
+```bash
+# 1. Put your API key in .env (gitignored)
+cp .env.example .env
+echo 'GEMINI_API_KEY=your-gemini-2.5-pro-key' > .env
+
+# 2. Install a daily cron job (default 09:00; pass HOUR MINUTE to change)
+./setup_cron.sh 9 0          # runs every day at 09:00 local time
+crontab -l                   # verify
+./setup_cron.sh --remove     # uninstall
+
+# Run a single cycle manually any time:
+./run_daily.sh               # or: python main.py --once -c config.yaml
+```
+
+`main.py --once` runs exactly one scan cycle then exits — safe for cron with no overlapping processes. `run_daily.sh` loads `.env`, picks the project venv, logs each run to `logs/daily_*.log`, and prunes logs older than 30 days.
+
+### API keys via environment variables
+
+Any provider's API key can be supplied through the environment instead of `config.yaml` (preferred for cron/Docker — keeps secrets out of files):
+
+| Provider | Env var(s) |
+|---|---|
+| Gemini | `GEMINI_API_KEY` or `GOOGLE_API_KEY` |
+| OpenAI | `OPENAI_API_KEY` |
+| Anthropic | `ANTHROPIC_API_KEY` |
+| OpenRouter | `OPENROUTER_API_KEY` |
+| DeepSeek / Groq / Together | `DEEPSEEK_API_KEY` / `GROQ_API_KEY` / `TOGETHER_API_KEY` |
+
+To use **Gemini 2.5 Pro**, set in `config.yaml`:
+```yaml
+ai:
+  enabled: true
+  provider: "gemini"
+  model: "gemini-2.5-pro"
+  api_key: ""          # leave blank — read from GEMINI_API_KEY env var
+```
 
 ## Dashboard
 

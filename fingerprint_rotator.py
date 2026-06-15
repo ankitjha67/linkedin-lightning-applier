@@ -226,7 +226,7 @@ class FingerprintRotator:
                 "source": combined
             })
             log.debug("Runtime fingerprint spoofing applied")
-        except Exception as e:
+        except Exception:
             # Fallback: execute directly (less reliable but works)
             try:
                 driver.execute_script(combined)

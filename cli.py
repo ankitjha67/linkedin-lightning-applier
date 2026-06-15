@@ -144,7 +144,7 @@ def _print_banner(title: str):
 def cmd_run(args):
     """Start the main LinkedIn Lightning Applier bot."""
     _print_banner("LinkedIn Lightning Applier -- Run")
-    cfg = _load_config(args.config)
+    _load_config(args.config)
     # Delegate to main.py's entry point
     sys.argv = ["main.py"]
     if args.config != "config.yaml":

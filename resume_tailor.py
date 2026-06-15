@@ -8,7 +8,6 @@ Creates PDF files that can be uploaded automatically during Easy Apply.
 import logging
 import os
 import re
-import time
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -290,7 +289,6 @@ Output the complete tailored resume in plain text format with section headers.""
         """Generate a DOCX resume using python-docx."""
         try:
             from docx import Document
-            from docx.shared import Pt, Inches
             from docx.enum.text import WD_ALIGN_PARAGRAPH
         except ImportError:
             log.warning("python-docx not installed. Run: pip install python-docx. Falling back to text.")

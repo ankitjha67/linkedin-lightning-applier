@@ -19,11 +19,9 @@ Comprehensive Flask dashboard combining all features into a single unified view:
 Runs in a background thread alongside the main bot.
 """
 
-import json
 import logging
 import threading
 from datetime import datetime
-from pathlib import Path
 
 log = logging.getLogger("lla.dashboard")
 

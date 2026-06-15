@@ -8,7 +8,6 @@ Scores are used to filter out low-match jobs before applying.
 import json
 import logging
 import re
-from typing import Optional
 
 log = logging.getLogger("lla.match_scorer")
 

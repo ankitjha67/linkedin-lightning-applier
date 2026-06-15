@@ -8,7 +8,6 @@ Produces TAKE / SKIP / TAKE WITH TIMEBOX verdicts with implementation plans.
 
 import json
 import logging
-from datetime import datetime
 
 log = logging.getLogger("lla.training_evaluator")
 
@@ -263,8 +262,8 @@ class TrainingEvaluator:
         # Core decision factors
         alignment = scores.get("alignment_score", 3.0)
         recruiter = scores.get("recruiter_signal", 3.0)
-        portfolio = scores.get("portfolio_output", {})
-        portfolio_score = scores.get("portfolio_output", 3.0)
+        scores.get("portfolio_output", {})
+        scores.get("portfolio_output", 3.0)
 
         # High alignment + recruiter signal => TAKE
         if alignment >= 4.0 and recruiter >= 3.5 and avg_score >= 3.5:

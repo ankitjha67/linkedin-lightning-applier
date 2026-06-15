@@ -10,9 +10,7 @@ Also provides an in-memory metrics collector for internal use.
 
 import logging
 import threading
-import time
 from collections import defaultdict
-from datetime import datetime
 
 log = logging.getLogger("lla.metrics")
 

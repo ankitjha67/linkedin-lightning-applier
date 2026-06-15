@@ -13,7 +13,6 @@ a register(registry) function that receives the PluginRegistry.
 import importlib
 import importlib.util
 import logging
-import os
 from pathlib import Path
 from typing import Optional, Callable
 

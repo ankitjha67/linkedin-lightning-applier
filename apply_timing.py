@@ -10,7 +10,6 @@ the job queue so the newest jobs are processed first.
 
 import logging
 import re
-from datetime import datetime, timedelta
 
 log = logging.getLogger("lla.apply_timing")
 

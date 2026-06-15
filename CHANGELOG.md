@@ -1,5 +1,63 @@
 # Changelog
 
+## v2.7.0 — Daily Scheduling & Env-Var API Keys
+
+### Added
+- **`--once` run mode** (`main.py --once`) — runs a single scan cycle then exits,
+  so it can be scheduled from cron without overlapping processes.
+- **Daily automation scripts** — `run_daily.sh` (loads `.env`, picks the project
+  venv, runs one cycle, logs to `logs/daily_*.log`, prunes logs >30 days) and
+  `setup_cron.sh` (idempotent installer: `./setup_cron.sh [HOUR MINUTE]`,
+  `--remove` to uninstall).
+- **Environment-variable API keys** — `AIAnswerer` now falls back to per-provider
+  env vars when `api_key` is blank in config: `GEMINI_API_KEY`/`GOOGLE_API_KEY`,
+  `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY`, `DEEPSEEK_API_KEY`,
+  `GROQ_API_KEY`, `TOGETHER_API_KEY`. Keeps secrets out of committed files.
+  Applies to both the primary and fallback providers.
+- **`.env.example`** — template for `.env` (gitignored), read by `run_daily.sh`.
+
+### Notes
+- To use Gemini 2.5 Pro: set `provider: "gemini"`, `model: "gemini-2.5-pro"`,
+  leave `api_key` blank, and export `GEMINI_API_KEY`.
+
+---
+
+## v2.6.0 — MCP Server, Free LLMs & Careers Scanner (from autopilot-jobhunt)
+
+Brings the best ideas from [autopilot-jobhunt](https://github.com/tarunlnmiit/autopilot-jobhunt):
+MCP control, zero-cost LLM backends, and a company-first careers-page scanner.
+
+### Added
+- **MCP Server** (`mcp_server.py` + `tools_layer.py`) — Control the bot with natural
+  language from Claude Code / Claude Desktop. 13 MCP tools (score job, evaluate, salary
+  benchmark, skill gaps, tailor resume, forensics, market report, list applied/recruiters,
+  visa sponsors, export, pipeline, stats). Protocol-agnostic `tools_layer.py` is the single
+  source of truth so future OpenAI/Gemini function-calling adapters share one implementation.
+  Install: `pip install -e '.[mcp]'` then `claude mcp add lla -- python -m mcp_server`.
+- **Claude CLI LLM backend** (`provider: claude_cli`) — Uses the local `claude` binary as
+  the LLM (no API key, zero cost if you have Claude Code). Subprocess call with
+  `--strict-mcp-config` to minimize context overhead.
+- **OpenRouter provider** (`provider: openrouter`) — Free 4-model fallback chain
+  (Llama 3.3 70B, Nemotron 70B, Gemma 2 9B, Qwen 2.5 72B). Auto-falls-back on rate limit.
+  Zero cost, no credit card.
+- **Careers-Page Scanner** (`careers_scanner.py` + `companies.json`) — Company-first job
+  discovery via free ATS JSON APIs (Greenhouse, Lever, Ashby) with HTML-scraping fallback.
+  Curated 30-company database (EU/US/APAC/Remote). Scores each role and surfaces top matches.
+  Complements the LinkedIn/Google scrapers. Wired into the scan cycle (opt-in).
+- **PyPI packaging** (`pyproject.toml`) — `pip install` distribution with `lla` CLI entry
+  point and optional-dependency groups (`[mcp]`, `[web]`, `[documents]`, `[anthropic]`, `[all]`).
+- **18 new tests** (`tests/test_integrations_new.py`) — covering both new providers, the
+  careers scanner, the tools layer (incl. a "never raises" contract test), and companies.json.
+
+### Fixed
+- `main.py` plugin-loading block referenced `features` before it was defined (NameError when
+  plugins loaded) — fixed to use a `plugin_count` counter applied in the features section.
+
+### Stats
+- 81 Python files, 29,590 lines of code, 217 tests, 55 features, 10 LLM providers.
+
+---
+
 ## v2.5.0 — Extension Framework & Integration Tests
 
 ### Added

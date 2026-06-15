@@ -200,26 +200,6 @@ class IndeedPlugin(JobPlatform):
             if not title:
                 return None
 
-            # Job ID
-            job_id = ""
-            jk_el = card.find_elements(By.CSS_SELECTOR, "a[data-jk]")
-            if jk_el:
-                job_id = jk_el[0].get_attribute("data-jk") or ""
-            if not job_id:
-                # Try extracting from href
-                for a in card.find_elements(By.TAG_NAME, "a"):
-                    href = a.get_attribute("href") or ""
-                    m = re.search(r'jk=([a-f0-9]+)', href)
-                    if m:
-                        job_id = m.group(1)
-                        break
-            is_real_jk = bool(job_id)
-            if not job_id:
-                # Composite hash fallback — include company+location for uniqueness
-                import hashlib
-                composite = f"{title}|{company}|{location}"
-                job_id = hashlib.md5(composite.encode()).hexdigest()[:12]
-
             # Company
             company = ""
             for sel in SELECTORS["company"]:
@@ -235,6 +215,25 @@ class IndeedPlugin(JobPlatform):
                 if els and els[0].text.strip():
                     location = els[0].text.strip()
                     break
+
+            # Job ID — prefer the real Indeed jk, fall back to a composite hash
+            job_id = ""
+            jk_el = card.find_elements(By.CSS_SELECTOR, "a[data-jk]")
+            if jk_el:
+                job_id = jk_el[0].get_attribute("data-jk") or ""
+            if not job_id:
+                for a in card.find_elements(By.TAG_NAME, "a"):
+                    href = a.get_attribute("href") or ""
+                    m = re.search(r'jk=([a-f0-9]+)', href)
+                    if m:
+                        job_id = m.group(1)
+                        break
+            is_real_jk = bool(job_id)
+            if not job_id:
+                # Composite hash fallback — include company+location for uniqueness
+                import hashlib
+                composite = f"{title}|{company}|{location}"
+                job_id = hashlib.md5(composite.encode()).hexdigest()[:12]
 
             # Work style detection
             work_style = ""
@@ -528,7 +527,6 @@ class IndeedPlugin(JobPlatform):
 
             # Submit or Continue — only terminal submits return True
             TERMINAL = ("submit your application", "submit")
-            INTERMEDIATE = ("apply", "continue", "next")
             advanced = False
             for btn_text in ["Submit your application", "Submit", "Apply", "Continue", "Next"]:
                 btns = driver.find_elements(By.XPATH,

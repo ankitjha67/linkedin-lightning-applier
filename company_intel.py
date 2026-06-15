@@ -9,7 +9,6 @@ Can skip companies below a minimum rating threshold.
 import logging
 import re
 import time
-from typing import Optional
 
 log = logging.getLogger("lla.company_intel")
 

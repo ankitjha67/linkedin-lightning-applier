@@ -26,7 +26,6 @@ from pathlib import Path
 
 try:
     import yaml
-    from selenium.common.exceptions import WebDriverException
     from selenium.webdriver.common.by import By
 except ImportError:
     print("Missing dependencies. Run: pip install selenium undetected-chromedriver pyyaml")
@@ -35,10 +34,10 @@ except ImportError:
 from state import State
 from linkedin import (
     create_browser, login, verify_session, build_search_url, navigate_to_search,
-    get_job_cards, extract_job_info, get_job_description, get_salary_info,
+    get_job_cards, get_job_description, get_salary_info,
     extract_experience_requirement, extract_hiring_team, detect_visa_sponsorship,
     click_easy_apply, process_easy_apply, discard_application,
-    human_sleep, safe_click, click_job_card, get_external_apply_url,
+    human_sleep, click_job_card, get_external_apply_url,
 )
 from ai import AIAnswerer
 
@@ -308,6 +307,11 @@ try:
 except ImportError:
     PluginLoader = None
 
+try:
+    from careers_scanner import CareersScanner
+except ImportError:
+    CareersScanner = None
+
 
 # ===================================================================
 shutdown_requested = False
@@ -484,7 +488,7 @@ def process_page(drv, cfg: dict, st: State, sched: dict,
                 applied_badges = drv.find_elements(By.XPATH, "//*[contains(text(), 'Applied')]")
             for badge in applied_badges:
                 if "applied" in badge.text.lower() and badge.is_displayed():
-                    log.info(f"   ⏭️  Already applied (badge)")
+                    log.info("   ⏭️  Already applied (badge)")
                     st.mark_skipped(job_id, title, company, location, "already applied (badge)",
                                    search_term=search_term, search_location=search_location)
                     result["skipped"] += 1
@@ -654,7 +658,7 @@ def process_page(drv, cfg: dict, st: State, sched: dict,
                     match_score=match_score, resume_version=resume_version,
                 )
                 result["applied"] += 1
-                log.info(f"   ✅  APPLIED!")
+                log.info("   ✅  APPLIED!")
 
                 # POST-APPLY ACTIONS
                 # Queue recruiter message
@@ -687,7 +691,7 @@ def process_page(drv, cfg: dict, st: State, sched: dict,
             else:
                 st.mark_failed(job_id, title, company, "modal failed")
                 result["failed"] += 1
-                log.info(f"   ❌  Modal failed")
+                log.info("   ❌  Modal failed")
 
         except Exception as e:
             log.warning(f"   💥  Error: {e}")
@@ -712,7 +716,8 @@ def process_page(drv, cfg: dict, st: State, sched: dict,
 def run_cycle(drv, cfg: dict, st: State, ai=None,
               scorer=None, tailor=None, ext_applier=None,
               messenger=None, alert_mgr=None, salary_eng=None,
-              prep_gen=None, scheduler=None, google_scraper=None):
+              prep_gen=None, scheduler=None, google_scraper=None,
+              careers=None):
     log = logging.getLogger("lla")
     sc = cfg.get("search", {})
     sched = cfg.get("scheduling", {})
@@ -748,6 +753,20 @@ def run_cycle(drv, cfg: dict, st: State, ai=None,
             log.error("Re-login failed. Skipping cycle.")
             return
 
+    # CAREERS-PAGE SCANNING (curated company ATS pages — runs first)
+    if careers and careers.enabled:
+        try:
+            log.info("🏢 Scanning curated company careers pages...")
+            new_jobs = careers.scan(score_jobs=True)
+            if new_jobs and alert_mgr and alert_mgr.enabled:
+                try:
+                    alert_mgr.send_error(careers.get_scan_summary(new_jobs))  # reuse channel
+                except Exception:
+                    pass
+            log.info(f"   Careers scan: {len(new_jobs)} matching jobs found")
+        except Exception as e:
+            log.warning(f"Careers scan error: {e}")
+
     # GOOGLE JOBS SCRAPING (before LinkedIn search)
     if google_scraper and google_scraper.enabled:
         try:
@@ -782,7 +801,6 @@ def run_cycle(drv, cfg: dict, st: State, ai=None,
                 break
 
             sl = loc.split(",")[0].strip()
-            found_results = False
 
             for filter_idx in range(chain_start, len(TIME_CHAIN)):
                 if shutdown_requested: break
@@ -804,8 +822,6 @@ def run_cycle(drv, cfg: dict, st: State, ai=None,
 
                     from linkedin import get_job_cards as _peek_cards
                     cards = _peek_cards(drv)
-                    new_cards = [c for c in cards
-                                 if c.get_attribute("data-occludable-job-id") not in cycle_seen_ids]
 
                     if len(cards) == 0 and filter_idx < len(TIME_CHAIN) - 1:
                         log.info(f"   0 results for \"{time_filter}\"")
@@ -821,7 +837,6 @@ def run_cycle(drv, cfg: dict, st: State, ai=None,
                                     scheduler=scheduler)
                     tot_a += r["applied"]; tot_s += r["skipped"]; tot_f += r["failed"]
                     log.info(f"   Page: +{r['applied']}A +{r['skipped']}S +{r['failed']}F | Unique seen: {len(cycle_seen_ids)}")
-                    found_results = True
                     break
 
                 except Exception as e:
@@ -876,7 +891,7 @@ def is_active_hours(cfg: dict) -> bool:
     return sched.get("active_hours_start", 0) <= datetime.now().hour < sched.get("active_hours_end", 24)
 
 
-def run_forever(config_path: str):
+def run_forever(config_path: str, run_once: bool = False):
     global driver, state, shutdown_requested
     log = logging.getLogger("lla")
 
@@ -932,13 +947,12 @@ def run_forever(config_path: str):
 
     # Load plugins
     plugin_registry = None
+    plugin_count = 0
     if PluginLoader:
         try:
             loader = PluginLoader(cfg)
             plugin_registry = loader.load_all()
-            loaded = plugin_registry.get_loaded_plugins()
-            if loaded:
-                features.append(f"Plugins ({len(loaded)})")
+            plugin_count = len(plugin_registry.get_loaded_plugins())
         except Exception as e:
             log.debug(f"Plugin loading failed: {e}")
 
@@ -966,6 +980,7 @@ def run_forever(config_path: str):
     sla_tracker = EmployerSLATracker(cfg, state) if EmployerSLATracker else None
     quality = QualityGate(ai_answerer, cfg, state) if QualityGate else None
     career_sim = CareerSimulator(ai_answerer, cfg, state) if CareerSimulator else None
+    careers = CareersScanner(cfg, state, ai_answerer, scorer) if CareersScanner else None
 
     # Start metrics server
     if metrics_collector and metrics_collector.enabled:
@@ -1021,6 +1036,8 @@ def run_forever(config_path: str):
     if sla_tracker and sla_tracker.enabled: features.append("Employer SLA")
     if quality and quality.enabled: features.append("Quality Gate")
     if career_sim and career_sim.enabled: features.append("Career Simulator")
+    if careers and careers.enabled: features.append("Careers Scanner")
+    if plugin_count: features.append(f"Plugins ({plugin_count})")
     if dash and dash.enabled: features.append(f"Dashboard (:{dash.port})")
     if features:
         log.info(f"🚀 Features: {', '.join(features)}")
@@ -1037,6 +1054,12 @@ def run_forever(config_path: str):
     log.info("Launching browser...")
     try:
         driver = create_browser(cfg)
+        if fp_rotator and fp_rotator.enabled:
+            try:
+                fp_rotator.apply_runtime_spoofing(driver)
+                log.info("Applied browser fingerprint spoofing")
+            except Exception as e:
+                log.debug(f"Fingerprint spoofing failed: {e}")
     except Exception as e:
         log.error(f"Browser failed: {e}")
         sys.exit(1)
@@ -1074,7 +1097,7 @@ def run_forever(config_path: str):
             interval = int(interval * adj)
 
         if not is_active_hours(cfg):
-            log.info(f"Outside active hours. Sleeping 10 min...")
+            log.info("Outside active hours. Sleeping 10 min...")
             time.sleep(600)
             continue
 
@@ -1089,7 +1112,7 @@ def run_forever(config_path: str):
         except Exception:
             log.warning("Browser crashed! Restarting...")
             try: driver.quit()
-            except: pass
+            except Exception: pass
             driver = create_browser(cfg)
             if not login(driver, cfg):
                 time.sleep(60)
@@ -1110,7 +1133,7 @@ def run_forever(config_path: str):
                      ext_applier=ext_applier, messenger=messenger,
                      alert_mgr=alert_mgr, salary_eng=salary_eng,
                      prep_gen=prep_gen, scheduler=scheduler,
-                     google_scraper=google_scraper)
+                     google_scraper=google_scraper, careers=careers)
             errors = 0
         except Exception as e:
             errors += 1
@@ -1123,7 +1146,7 @@ def run_forever(config_path: str):
             if errors >= 5:
                 log.error("Too many errors. Restarting browser...")
                 try: driver.quit()
-                except: pass
+                except Exception: pass
                 try:
                     driver = create_browser(cfg)
                     login(driver, cfg)
@@ -1225,6 +1248,11 @@ def run_forever(config_path: str):
         if shutdown_requested:
             break
 
+        # Daily/once mode: one cycle then exit (clean for cron scheduling)
+        if run_once:
+            log.info("Single-run mode (--once): cycle complete, exiting.")
+            break
+
         # Sleep with jitter (rate limiter may override)
         jitter = random.randint(-60, 60)
         wait = max(interval + jitter, 60)
@@ -1250,7 +1278,7 @@ def run_forever(config_path: str):
 
     if driver:
         try: driver.quit()
-        except: pass
+        except Exception: pass
     if state:
         state.close()
     log.info("Goodbye! 👋")
@@ -1259,5 +1287,7 @@ def run_forever(config_path: str):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="LinkedIn Lightning Applier v2")
     parser.add_argument("-c", "--config", default="config.yaml", help="Config file path")
+    parser.add_argument("--once", action="store_true",
+                        help="Run a single scan cycle then exit (for daily cron scheduling)")
     args = parser.parse_args()
-    run_forever(args.config)
+    run_forever(args.config, run_once=args.once)
