@@ -76,7 +76,7 @@ class AIAnswerer:
 
         # Primary provider
         self.provider = ai_cfg.get("provider", "openai").lower()
-        self.api_key = ai_cfg.get("api_key", "")
+        self.api_key = ai_cfg.get("api_key", "") or self._key_from_env(self.provider)
         self.model = ai_cfg.get("model", "") or DEFAULT_MODELS.get(self.provider, "")
         self.base_url = ai_cfg.get("base_url", "") or PROVIDER_URLS.get(self.provider, "")
         self.temperature = ai_cfg.get("temperature", 0.3)
@@ -128,6 +128,30 @@ class AIAnswerer:
         """)
         self.db.commit()
 
+    @staticmethod
+    def _key_from_env(provider: str) -> str:
+        """Fall back to a per-provider environment variable for the API key.
+
+        Lets the key live in the environment (safer for cron/Docker) instead of
+        being written into config.yaml. Checks provider-specific names first,
+        e.g. GEMINI_API_KEY / GOOGLE_API_KEY for the 'gemini' provider.
+        """
+        import os
+        candidates = {
+            "gemini":     ["GEMINI_API_KEY", "GOOGLE_API_KEY"],
+            "openai":     ["OPENAI_API_KEY"],
+            "anthropic":  ["ANTHROPIC_API_KEY"],
+            "deepseek":   ["DEEPSEEK_API_KEY"],
+            "groq":       ["GROQ_API_KEY"],
+            "together":   ["TOGETHER_API_KEY"],
+            "openrouter": ["OPENROUTER_API_KEY"],
+        }.get(provider, [f"{provider.upper()}_API_KEY"])
+        for name in candidates:
+            val = os.environ.get(name, "")
+            if val:
+                return val
+        return ""
+
     @property
     def client(self):
         """Lazy-init the primary OpenAI-compatible client."""
@@ -139,7 +163,8 @@ class AIAnswerer:
     def fallback_client(self):
         """Lazy-init the fallback client."""
         if self._fallback_client is None and self.fallback_enabled and self.fallback_provider:
-            self._fallback_client = self._make_client(self.fallback_provider, "", self.fallback_base_url)
+            fb_key = self.cfg.get("ai", {}).get("fallback_api_key", "") or self._key_from_env(self.fallback_provider)
+            self._fallback_client = self._make_client(self.fallback_provider, fb_key, self.fallback_base_url)
         return self._fallback_client
 
     def _make_client(self, provider: str, api_key: str, base_url: str):

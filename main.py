@@ -891,7 +891,7 @@ def is_active_hours(cfg: dict) -> bool:
     return sched.get("active_hours_start", 0) <= datetime.now().hour < sched.get("active_hours_end", 24)
 
 
-def run_forever(config_path: str):
+def run_forever(config_path: str, run_once: bool = False):
     global driver, state, shutdown_requested
     log = logging.getLogger("lla")
 
@@ -1248,6 +1248,11 @@ def run_forever(config_path: str):
         if shutdown_requested:
             break
 
+        # Daily/once mode: one cycle then exit (clean for cron scheduling)
+        if run_once:
+            log.info("Single-run mode (--once): cycle complete, exiting.")
+            break
+
         # Sleep with jitter (rate limiter may override)
         jitter = random.randint(-60, 60)
         wait = max(interval + jitter, 60)
@@ -1282,5 +1287,7 @@ def run_forever(config_path: str):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="LinkedIn Lightning Applier v2")
     parser.add_argument("-c", "--config", default="config.yaml", help="Config file path")
+    parser.add_argument("--once", action="store_true",
+                        help="Run a single scan cycle then exit (for daily cron scheduling)")
     args = parser.parse_args()
-    run_forever(args.config)
+    run_forever(args.config, run_once=args.once)

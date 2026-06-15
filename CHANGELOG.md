@@ -1,5 +1,27 @@
 # Changelog
 
+## v2.7.0 — Daily Scheduling & Env-Var API Keys
+
+### Added
+- **`--once` run mode** (`main.py --once`) — runs a single scan cycle then exits,
+  so it can be scheduled from cron without overlapping processes.
+- **Daily automation scripts** — `run_daily.sh` (loads `.env`, picks the project
+  venv, runs one cycle, logs to `logs/daily_*.log`, prunes logs >30 days) and
+  `setup_cron.sh` (idempotent installer: `./setup_cron.sh [HOUR MINUTE]`,
+  `--remove` to uninstall).
+- **Environment-variable API keys** — `AIAnswerer` now falls back to per-provider
+  env vars when `api_key` is blank in config: `GEMINI_API_KEY`/`GOOGLE_API_KEY`,
+  `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY`, `DEEPSEEK_API_KEY`,
+  `GROQ_API_KEY`, `TOGETHER_API_KEY`. Keeps secrets out of committed files.
+  Applies to both the primary and fallback providers.
+- **`.env.example`** — template for `.env` (gitignored), read by `run_daily.sh`.
+
+### Notes
+- To use Gemini 2.5 Pro: set `provider: "gemini"`, `model: "gemini-2.5-pro"`,
+  leave `api_key` blank, and export `GEMINI_API_KEY`.
+
+---
+
 ## v2.6.0 — MCP Server, Free LLMs & Careers Scanner (from autopilot-jobhunt)
 
 Brings the best ideas from [autopilot-jobhunt](https://github.com/tarunlnmiit/autopilot-jobhunt):

@@ -310,6 +310,47 @@ Then in any Claude session: *"Score this job for me"*, *"Show my application sta
 
 A targeted, company-first discovery mode that complements LinkedIn/Google search. Scans a curated `companies.json` (30+ companies, extensible) via **free** ATS JSON APIs (Greenhouse, Lever, Ashby) with HTML-scraping fallback — no paid API needed. Enable with `careers_scanner.enabled: true`. Scores every role with your match scorer and surfaces the top matches.
 
+## Daily Automation
+
+Run one scan cycle per day on a schedule (instead of the continuous loop):
+
+```bash
+# 1. Put your API key in .env (gitignored)
+cp .env.example .env
+echo 'GEMINI_API_KEY=your-gemini-2.5-pro-key' > .env
+
+# 2. Install a daily cron job (default 09:00; pass HOUR MINUTE to change)
+./setup_cron.sh 9 0          # runs every day at 09:00 local time
+crontab -l                   # verify
+./setup_cron.sh --remove     # uninstall
+
+# Run a single cycle manually any time:
+./run_daily.sh               # or: python main.py --once -c config.yaml
+```
+
+`main.py --once` runs exactly one scan cycle then exits — safe for cron with no overlapping processes. `run_daily.sh` loads `.env`, picks the project venv, logs each run to `logs/daily_*.log`, and prunes logs older than 30 days.
+
+### API keys via environment variables
+
+Any provider's API key can be supplied through the environment instead of `config.yaml` (preferred for cron/Docker — keeps secrets out of files):
+
+| Provider | Env var(s) |
+|---|---|
+| Gemini | `GEMINI_API_KEY` or `GOOGLE_API_KEY` |
+| OpenAI | `OPENAI_API_KEY` |
+| Anthropic | `ANTHROPIC_API_KEY` |
+| OpenRouter | `OPENROUTER_API_KEY` |
+| DeepSeek / Groq / Together | `DEEPSEEK_API_KEY` / `GROQ_API_KEY` / `TOGETHER_API_KEY` |
+
+To use **Gemini 2.5 Pro**, set in `config.yaml`:
+```yaml
+ai:
+  enabled: true
+  provider: "gemini"
+  model: "gemini-2.5-pro"
+  api_key: ""          # leave blank — read from GEMINI_API_KEY env var
+```
+
 ## Dashboard
 
 The real-time dashboard runs at `http://localhost:5000` when `dashboard.enabled: true`.
