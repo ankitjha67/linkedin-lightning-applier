@@ -1,5 +1,23 @@
 # Changelog
 
+## v2.7.1 — Stale-data refresh
+
+### Changed
+- Refreshed default model IDs to current generations: `anthropic` →
+  `claude-sonnet-4-6` (was a pinned 2025-05 build), `gemini` →
+  `gemini-2.5-flash` (was `gemini-2.0-flash`).
+- `pyproject.toml` version bumped 2.5.0 → 2.7.0 to match the changelog.
+- `config.example.yaml` AI block now shows a real, current setup (Gemini 2.5
+  with env-var key) instead of the fictional `qwen3.5-9b` placeholder.
+- Corrected stale stats across docs: test count (165 → 217), table count
+  (13/32 → 48), feature count (36 → 55), LOC (29,590 → 29,504).
+- Fixed wrong table names/columns in ARCHITECTURE.md schema reference
+  (`dedup_fingerprints` → `job_fingerprints`, `apply_queue` →
+  `apply_schedule`, plus accurate columns for the lifecycle/intelligence
+  tables) and expanded it to cover all 48 tables.
+
+---
+
 ## v2.7.0 — Daily Scheduling & Env-Var API Keys
 
 ### Added

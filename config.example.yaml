@@ -271,17 +271,18 @@ export:
   visa_sponsors_csv: "visa_sponsors.csv"
 
 # ═══════════════════════════════════════════════════════════════
-# AI — LM Studio primary, Ollama 7B fallback
+# AI — choose a provider. Examples: gemini (2.5), openrouter (free),
+# claude_cli (no key), ollama/lmstudio (local). See notes at bottom.
 # ═══════════════════════════════════════════════════════════════
 ai:
   enabled: true
 
-  provider: "lmstudio"
-  model: "qwen3.5-9b"
-  base_url: "http://localhost:1234/v1"
-  api_key: ""
+  provider: "gemini"
+  model: "gemini-2.5-flash"          # or "gemini-2.5-pro" for higher quality
+  base_url: ""                       # blank = provider default
+  api_key: ""                        # blank = read from GEMINI_API_KEY env var
 
-  fallback_enabled: true
+  fallback_enabled: false
   fallback_provider: "ollama"
   fallback_model: "llama3.1"
   fallback_base_url: "http://localhost:11434/v1"

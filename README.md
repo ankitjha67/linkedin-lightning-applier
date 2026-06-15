@@ -216,7 +216,7 @@ The `data/` folder (auto-created) contains:
 main.py                 Orchestrator — scheduling, filtering, feature integration
 linkedin.py             Browser — login, search, Easy Apply, recruiter messaging
 ai.py                   Multi-provider LLM — answers, cover letters, skill extraction
-state.py                SQLite — 13 tables, migrations, CSV export
+state.py                SQLite — 48 tables, migrations, CSV export
 
 match_scorer.py         AI match scoring engine (0-100%)
 resume_tailor.py        AI resume generation — PDF/DOCX/TXT output
@@ -274,7 +274,7 @@ pyproject.toml          PyPI packaging — `pip install` + `lla` CLI entry point
 tests/                  217 unit + integration tests
 ```
 
-29,590 lines across 81 Python files and 55 features. Includes 217 unit tests.
+29,504 lines across 81 Python files and 55 features. Includes 217 unit tests.
 
 ## AI Providers
 
@@ -390,7 +390,7 @@ Extension points: ATS handlers, job platforms, resume templates, role archetypes
 ## Testing
 
 ```bash
-# Run all 165 tests
+# Run all 217 tests
 python -m unittest discover -s tests -v
 
 # Run specific test module
@@ -398,7 +398,7 @@ python -m unittest tests.test_state -v
 python -m unittest tests.test_salary_intel -v
 ```
 
-Tests cover: State class (32 tables, CRUD, migration, CSV export), match scoring (JSON parsing, bounds, thresholds), salary parsing (10+ currencies), dedup engine (fingerprinting, cross-platform matching), apply timing (freshness scoring, queue reordering), JD change tracking (snapshot capture, change detection), and config validation (missing sections, conflicts, numeric bounds).
+Tests cover: State class (48 tables, CRUD, migration, CSV export), match scoring (JSON parsing, bounds, thresholds), salary parsing (10+ currencies), dedup engine (fingerprinting, cross-platform matching), apply timing (freshness scoring, queue reordering), JD change tracking (snapshot capture, change detection), and config validation (missing sections, conflicts, numeric bounds).
 
 ## Production Hardening
 
