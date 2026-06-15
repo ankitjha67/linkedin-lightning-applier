@@ -143,7 +143,7 @@ Every module except the 4 core files (main, linkedin, ai, state) is imported wit
 
 ## Database Schema
 
-SQLite database at `data/state.db` with 32 tables:
+SQLite database at `data/state.db` with 48 tables:
 
 ### Core Tables
 
@@ -173,18 +173,37 @@ SQLite database at `data/state.db` with 32 tables:
 | `response_tracking` | Application outcomes | job_id, response_type, match_score, recruiter_messaged, days_to_response |
 | `hiring_velocity` | Company hiring speed | company + title_pattern (PK), days_active, filled |
 
-### New Feature Tables (v2.1)
+### Lifecycle & Intelligence Tables
 
 | Table | Purpose | Key Columns |
 |-------|---------|-------------|
-| `dedup_fingerprints` | Fuzzy fingerprint cache for cross-platform dedup | fingerprint_hash (PK), title, company, platform, created_at |
-| `jd_snapshots` | JD version history for change tracking | job_id, snapshot_text, captured_at, diff_from_previous |
-| `recruiter_interactions` | CRM interaction log | recruiter_id, interaction_type, notes, timestamp, score_delta |
-| `recruiter_scores` | Computed relationship scores | recruiter_id (PK), total_score, last_interaction, follow_up_due |
-| `apply_queue` | Time-optimized application queue | job_id (PK), queued_at, scheduled_for, priority_score, status |
-| `negotiation_briefs` | Generated salary negotiation documents | job_id (PK), market_median, counter_suggestion, brief_path |
-| `ats_statuses` | Scraped ATS portal statuses | job_id, portal, status, last_checked, status_changed_at |
-| `job_watchlist` | Bookmarked jobs with activity tracking | job_id (PK), added_at, last_checked, is_active, next_reminder |
+| `job_fingerprints` | Fuzzy fingerprint cache for cross-platform dedup | fingerprint (PK), job_id, platform, title, company, location, times_seen |
+| `jd_snapshots` | JD version history for change tracking | id, job_id, snapshot_hash, description, salary_info, captured_at |
+| `jd_changes` | Detected JD edits | id, job_id, change_type, old_value, new_value, detected_at |
+| `recruiter_interactions` | CRM interaction log | id, recruiter_name, company, interaction_type, job_id, notes, occurred_at |
+| `recruiter_scores` | Computed relationship scores | recruiter_name + company (PK), relationship_score, interactions, responses, last_interaction |
+| `apply_schedule` | Time-optimized application queue | id, job_id, title, company, optimal_time, timezone, status, created_at |
+| `negotiation_briefs` | Generated salary negotiation briefs | job_id (PK), company, title, market_rate, company_range, leverage_points, counter_offer |
+| `ats_status` | Scraped ATS portal statuses | id, job_id, company, portal_url, current_status, previous_status, last_checked |
+| `job_watchlist` | Bookmarked jobs with activity tracking | id, job_id, title, company, match_score, reason, remind_at, status, still_active |
+| `withdrawal_queue` | Scheduled application withdrawals | id, job_id, company, title, reason, status, scheduled_at, withdrawn_at |
+| `offers` / `offer_comparisons` | Offer war-room data | job_id (PK), base_salary, bonus, equity, visa_support, deadline |
+| `interview_sessions` | Mock interview transcripts | id, job_id, archetype, questions_asked, responses, scores, overall_score |
+| `ghost_predictions` | Pre-apply ghost-risk scores | job_id (PK), ghost_probability, risk_factors, predicted_at |
+| `market_snapshots` | Periodic market-pulse data | id, role_pattern, location, posting_count, trend, snapshot_at |
+| `employer_sla` | Per-company response SLAs | company + stage (PK), avg_days, min_days, max_days, sample_size |
+| `quality_scores` | Pre-submit application quality | job_id (PK), resume_match_pct, cover_letter_score, overall_quality |
+| `career_simulations` | Career-path projections | id, simulation_name, current_role, paths, recommendation |
+| `job_evaluations` / `story_bank` / `job_archetypes` | A-F eval, STAR stories, role classification | job_id (PK) / id / job_id (PK) |
+| `portfolio_projects` / `training_evaluations` | Project & course ROI scoring | id, total_score, verdict, plan |
+| `deep_research` | 6-axis company research | job_id (PK), ai_strategy, recent_moves, eng_culture, candidate_angle |
+| `pipeline_states` | Application lifecycle state machine | job_id (PK), current_state, previous_state, state_history, priority |
+| `referral_requests` | Drafted referral messages | id, job_id, company, connection_name, message_text, status |
+| `company_connections` | 1st/2nd-degree network at companies | id, company, connection_name, degree, job_id |
+| `company_intel` | Enriched company data | company (PK), glassdoor_rating, company_size, industry |
+| `email_responses` | IMAP-detected responses | id, job_id, company, response_type, received_at |
+| `skill_frequency` | Skill demand across all JDs | skill (PK), times_seen, times_matched |
+| `profile_suggestions` | LinkedIn profile optimization tips | id, section, suggestion, keyword, frequency |
 
 ### Schema Migrations
 

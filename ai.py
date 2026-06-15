@@ -40,8 +40,8 @@ PROVIDER_URLS = {
 # Default models per provider
 DEFAULT_MODELS = {
     "openai":     "gpt-4o-mini",
-    "anthropic":  "claude-sonnet-4-20250514",
-    "gemini":     "gemini-2.0-flash",
+    "anthropic":  "claude-sonnet-4-6",
+    "gemini":     "gemini-2.5-flash",
     "deepseek":   "deepseek-chat",
     "groq":       "llama-3.1-70b-versatile",
     "together":   "meta-llama/Llama-3.1-70B-Instruct-Turbo",
