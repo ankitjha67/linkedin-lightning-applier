@@ -22,14 +22,24 @@
     every Workday tenant. Voluntary self-ID defaults to "decline to answer".
   - `__init__.py` — registry: `detect_ats(url)`, `get_handler(name)`,
     `handler_for_url(url)`.
+- **`apply_urls.py` — standalone batch apply runner** (+ `lla apply` CLI command).
+  Closes the discovery→submission gap: hand it a list of apply URLs (inline, or a
+  `.txt`/`.csv`/`.json` file) and it drives a real browser through each ATS form
+  and submits — **without LinkedIn** (external ATS apply only needs the browser +
+  config). Reuses the same `ExternalApplier`/`ats_handlers` engine, records
+  results to SQLite with URL-based dedup, and offers a `--dry-run` that detects
+  the ATS per URL with no browser and submits nothing. Flags: `--file`,
+  `--resume`, `--max`, `--headless`, `--force`, `--dry-run`.
 - **`external_apply.ats_accounts`** config — credentials for login-gated ATSes
   (Workday, iCIMS, Taleo, SuccessFactors, ADP). One email+password is reused
   per platform; account created on first visit, signed into thereafter. Supports
   optional per-tenant Workday overrides. Missing creds → platform skipped, not
   failed. Also added `max_wizard_pages` and `slow_mo_seconds` knobs.
-- **25 new tests** (`tests/test_ats_handlers.py`) — detection across all 12
-  platforms, registry wiring, handler shapes/account flags, Workday per-tenant
-  credential resolution, and keyword-match field logic. Suite: 217 → 242.
+- **34 new tests** (`tests/test_ats_handlers.py`, `tests/test_apply_urls.py`) —
+  detection across all 12 platforms, registry wiring, handler shapes/account
+  flags, Workday per-tenant credential resolution, keyword-match field logic,
+  plus the batch runner's input parsing (txt/csv/json), URL dedup, stable job
+  IDs, and browserless planning. Suite: 217 → 251.
 
 ### Changed
 - **`external_apply.py`** is now a thin orchestrator (tab management, per-cycle

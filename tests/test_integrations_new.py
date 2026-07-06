@@ -18,7 +18,7 @@ class TestNewAIProviders(unittest.TestCase):
     """OpenRouter free chain + Claude CLI provider."""
 
     def test_openrouter_provider_init(self):
-        from ai import AIAnswerer, OPENROUTER_FREE_CHAIN
+        from ai import OPENROUTER_FREE_CHAIN, AIAnswerer
         ai = AIAnswerer({"ai": {"enabled": True, "provider": "openrouter", "api_key": "test"}})
         self.assertEqual(ai.provider, "openrouter")
         self.assertEqual(ai.base_url, "https://openrouter.ai/api/v1")

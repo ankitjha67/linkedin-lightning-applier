@@ -156,6 +156,48 @@ def cmd_run(args):
         main.main()
 
 
+def cmd_apply(args):
+    """Submit applications to external ATS forms from a list of apply URLs.
+
+    The "last mile": hand it apply links (from Indeed, Google Jobs, a careers
+    page, or a spreadsheet) and it drives a real browser through each ATS form
+    and submits — no LinkedIn required. Supports all 12 ATS platforms.
+    """
+    _print_banner("External Batch Apply")
+    from apply_urls import BatchApplier, load_jobs
+    from ats_handlers import detect_ats
+
+    jobs = load_jobs(args.urls, args.file)
+    if not jobs:
+        print("  No valid URLs provided. Pass URLs or --file <path>.")
+        return
+
+    if args.dry_run:
+        supported = 0
+        headers = ["ATS", "Status", "URL"]
+        rows = []
+        for j in jobs:
+            ats = detect_ats(j["url"])
+            status = "ready" if ats else "unsupported"
+            if ats:
+                supported += 1
+            rows.append([ats or "—", status, j["url"][:55]])
+        _print_table(headers, rows)
+        print(f"\n  {supported}/{len(jobs)} ready to apply. "
+              f"(dry run — nothing submitted)")
+        return
+
+    cfg = _load_config(args.config)
+    runner = BatchApplier(cfg, resume_path=args.resume or "",
+                          headless=args.headless or None,
+                          max_apply=args.max_apply, force=args.force)
+    ok, fail, skip = runner.run(jobs)
+    print(f"\n  Done: {_color(str(ok)+' submitted', 'green')}   "
+          f"{_color(str(fail)+' failed', 'red')}   {skip} skipped")
+    if fail:
+        sys.exit(1)
+
+
 def cmd_evaluate(args):
     """Run a structured A-F evaluation for a specific job."""
     _print_banner("Job Evaluation")
@@ -612,6 +654,9 @@ def build_parser() -> argparse.ArgumentParser:
         epilog=textwrap.dedent("""\
             Examples:
               lla run                          Start the bot
+              lla apply URL [URL ...]          Submit external ATS applications
+              lla apply --file urls.txt        Batch-apply from a file
+              lla apply --file urls.txt --dry-run   Preview ATS detection
               lla stats                        Show statistics
               lla validate-config              Check config.yaml
               lla skill-gaps                   Skill gap report
@@ -628,6 +673,17 @@ def build_parser() -> argparse.ArgumentParser:
 
     # --- run ---
     subs.add_parser("run", help="Start the main bot")
+
+    # --- apply ---
+    p = subs.add_parser("apply", help="Submit external ATS applications from apply URLs")
+    p.add_argument("urls", nargs="*", help="Apply URL(s) to submit")
+    p.add_argument("-f", "--file", help="File of URLs (.txt one-per-line, .csv, or .json)")
+    p.add_argument("-r", "--resume", help="Resume file to upload (overrides config)")
+    p.add_argument("--max", type=int, dest="max_apply", help="Max applications this run")
+    p.add_argument("--headless", action="store_true", help="Run the browser headless")
+    p.add_argument("--force", action="store_true", help="Re-apply even if already applied")
+    p.add_argument("--dry-run", action="store_true",
+                   help="Detect the ATS for each URL and print a plan — no browser, no submit")
 
     # --- evaluate ---
     p = subs.add_parser("evaluate", help="Evaluate a specific job (A-F blocks)")
@@ -734,6 +790,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 COMMAND_MAP = {
     "run": cmd_run,
+    "apply": cmd_apply,
     "evaluate": cmd_evaluate,
     "score": cmd_score,
     "compare-offers": cmd_compare_offers,

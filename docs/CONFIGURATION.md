@@ -330,6 +330,19 @@ link. If the URL matches a supported ATS, it opens the form in a new tab and
 delegates to a platform-specific handler in `ats_handlers/` that fills every
 field via keyword matching + AI, uploads your resume, and submits.
 
+> **Apply without LinkedIn.** The same engine is available standalone via
+> `apply_urls.py` (or `lla apply`). Hand it a list of apply URLs from anywhere —
+> Indeed, Google Jobs, a careers page, a spreadsheet — and it submits each one
+> in a real browser, no LinkedIn login needed:
+>
+> ```bash
+> python apply_urls.py --file urls.txt --resume ~/cv.pdf
+> python apply_urls.py --file urls.txt --dry-run   # preview ATS detection only
+> ```
+>
+> Results are recorded to SQLite with URL-based dedup, so re-runs skip anything
+> already submitted. The `ats_accounts` credentials below are used here too.
+
 ### How each platform is handled
 
 | Platform | Shape | Login | Notes |

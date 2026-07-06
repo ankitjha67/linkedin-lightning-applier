@@ -228,6 +228,7 @@ recruiter_messenger.py  Message queue with scheduled delivery
 google_jobs_scraper.py  Google Jobs scraping — Selenium, SerpAPI, or requests
 external_apply.py       ATS orchestrator — tab mgmt, detection, per-cycle caps
 ats_handlers/           12 ATS handlers (Workday, Greenhouse, iCIMS, Taleo, ...)
+apply_urls.py           Standalone batch apply — submit ATS forms from a URL list
 activity_sim.py         Human behavior simulation — feed, likes, profile views
 alerts.py               Telegram / Discord / Slack notifications
 dashboard.py            Flask real-time dashboard with dark theme
@@ -276,10 +277,10 @@ tools_layer.py          Protocol-agnostic tool layer (MCP/adapter foundation)
 careers_scanner.py      Curated company careers-page scanner (Greenhouse/Lever/Ashby)
 companies.json          Curated target-company database (30+ companies)
 pyproject.toml          PyPI packaging — `pip install` + `lla` CLI entry point
-tests/                  217 unit + integration tests
+tests/                  251 unit + integration tests
 ```
 
-29,504 lines across 81 Python files and 55 features. Includes 217 unit tests.
+31,132 lines across 89 Python files and 55 features. Includes 251 unit tests.
 
 ## AI Providers
 
@@ -310,6 +311,44 @@ claude mcp add lla -- python -m mcp_server
 ```
 
 Then in any Claude session: *"Score this job for me"*, *"Show my application stats"*, *"Run application forensics"*, *"Generate a market report"*, *"Tailor my resume for this role"*. 13 tools exposed via the Model Context Protocol — all backed by the same engine as the CLI and bot.
+
+## Apply Without LinkedIn (Batch ATS Apply)
+
+Discovery tools (Indeed, Google Jobs, a careers page, a spreadsheet a recruiter
+sent you) can find jobs and hand you apply links — but they can't click submit.
+`apply_urls.py` is the **last mile**: give it apply URLs and it drives a real
+browser through each ATS form and submits. **No LinkedIn login required** —
+external ATS applications only need your browser + config. Works on all 12
+supported platforms (Workday, Greenhouse, Lever, iCIMS, Taleo, …).
+
+```bash
+# One or more apply URLs
+python apply_urls.py https://boards.greenhouse.io/acme/jobs/123 \
+                     https://nvidia.wd5.myworkdayjobs.com/careers/job/x
+
+# From a file — one URL per line, or a CSV/JSON with metadata
+python apply_urls.py --file urls.txt --resume ~/cv.pdf
+python apply_urls.py --file jobs.csv          # header: url,title,company,description
+
+# Preview first — detect the ATS for each URL, submit nothing
+python apply_urls.py --file urls.txt --dry-run
+
+# Caps & options
+python apply_urls.py --file urls.txt --max 10 --headless
+#   --force     re-apply even if already applied (dedup is by URL)
+
+# Same thing via the CLI:
+lla apply --file urls.txt --dry-run
+```
+
+It fills identity fields from your config for free, uses AI for open-ended
+questions, uploads your resume, creates accounts on login-gated portals
+(Workday/iCIMS/Taleo/… — see `external_apply.ats_accounts`), and records every
+result to SQLite (`applied_jobs` / `failed_jobs`), so re-runs skip anything
+already submitted. Exit status is `0` only if every attempted URL submitted.
+
+**Workflow to close the loop:** find jobs however you like → collect the apply
+links into `urls.txt` (or a CSV) → `python apply_urls.py --file urls.txt`.
 
 ## Careers-Page Scanner
 
@@ -395,7 +434,7 @@ Extension points: ATS handlers, job platforms, resume templates, role archetypes
 ## Testing
 
 ```bash
-# Run all 217 tests
+# Run all 251 tests
 python -m unittest discover -s tests -v
 
 # Run specific test module
