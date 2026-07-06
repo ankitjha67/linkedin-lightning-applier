@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- **`lla test-llm` command** — send one real prompt to the configured (or
+  `--provider`/`--model`/`--base-url`/`--api-key` overridden) LLM and print the
+  reply, latency, and resolved provider/model. Uses a low-level probe that
+  surfaces the real error (bad model id, 404, auth, unreachable) instead of the
+  silent `""` that `AIAnswerer.generate()` returns on failure, and flags models
+  that return no text (rerank/embedding models can't generate answers). +5 tests.
+
 ## v2.8.0 — Multi-ATS Auto-Apply (12 platforms, incl. Workday)
 
 ### Added

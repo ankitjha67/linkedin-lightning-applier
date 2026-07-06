@@ -485,7 +485,7 @@ The bot generates multiple resume variants and uses Thompson sampling to learn w
 ## 10. Running Tests
 
 ```bash
-# Run all 251 tests
+# Run all 256 tests
 python -m unittest discover -s tests -v
 
 # Run specific test module

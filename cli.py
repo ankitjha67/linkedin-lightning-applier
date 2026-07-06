@@ -156,6 +156,92 @@ def cmd_run(args):
         main.main()
 
 
+def _probe_llm(ai, prompt: str) -> str:
+    """One low-level LLM call that SURFACES errors.
+
+    AIAnswerer.generate() deliberately swallows failures and returns "" so the
+    bot degrades gracefully. For a connectivity test we want the real exception
+    (bad model id, 404, auth error) instead of a silent empty string. For the
+    OpenAI-compatible providers we hit the client directly; the two special
+    backends (Claude CLI subprocess, Anthropic native SDK) fall back to generate().
+    """
+    if ai.provider == "claude_cli" or (
+            ai.provider == "anthropic" and getattr(ai, "_use_anthropic", False)):
+        return ai.generate(prompt)
+    if ai.client is None:
+        raise RuntimeError(
+            "LLM client could not be created. For OpenAI-compatible providers "
+            "(openrouter/gemini/ollama/lmstudio/openai/groq/...) install the SDK: "
+            "pip install openai")
+    resp = ai.client.chat.completions.create(
+        model=ai.model,
+        messages=[{"role": "user", "content": prompt}],
+        max_tokens=64,
+    )
+    return (resp.choices[0].message.content or "").strip()
+
+
+def cmd_test_llm(args):
+    """Send one real prompt to the configured (or overridden) LLM and print the reply.
+
+    Verifies end-to-end connectivity for ANY provider — cloud (OpenAI, Anthropic,
+    Gemini, Groq, DeepSeek, OpenRouter, Claude CLI) or local (Ollama, LM Studio) —
+    before you rely on it for form answers. Override the provider/model on the fly
+    with --provider/--model so you can try a model without editing config.
+
+    A model that returns empty text (e.g. a reranker or embedding model) is
+    flagged as unusable for generation.
+    """
+    _print_banner("LLM Connectivity Test")
+    cfg = _load_config(args.config)
+    ai_cfg = cfg.setdefault("ai", {})
+    ai_cfg["enabled"] = True
+    if args.provider:
+        ai_cfg["provider"] = args.provider
+        # A bare provider override shouldn't inherit an unrelated model from config.
+        if not args.model:
+            ai_cfg["model"] = ""
+    if args.model:
+        ai_cfg["model"] = args.model
+    if args.base_url:
+        ai_cfg["base_url"] = args.base_url
+    if args.api_key:
+        ai_cfg["api_key"] = args.api_key
+
+    ai = _init_ai(cfg)
+    if ai is None or not getattr(ai, "enabled", False):
+        print(f"  {_color('AI is disabled or failed to initialize.', 'red')}")
+        sys.exit(1)
+
+    print(f"  Provider : {ai.provider}")
+    print(f"  Model    : {ai.model or '(provider default)'}")
+    print(f"  Base URL : {ai.base_url or '(native SDK)'}")
+    print(f"  API key  : {'set' if ai.api_key else '(none — ok for local / claude_cli)'}")
+
+    prompt = args.prompt or "Reply with exactly the word: OK"
+    print(f"\n  Prompt   : {prompt}")
+    import time as _time
+    t0 = _time.time()
+    try:
+        reply = _probe_llm(ai, prompt)
+    except Exception as exc:
+        print(f"\n  {_color('FAILED', 'red')}: {exc}")
+        print("  Check the model id, api key, and base_url. For OpenRouter, confirm the")
+        print("  model exists at https://openrouter.ai/models and is a chat (not rerank) model.")
+        sys.exit(1)
+    dt = _time.time() - t0
+
+    if reply and reply.strip():
+        print(f"  Reply    : {_color(reply.strip()[:500], 'green')}")
+        print(f"  Latency  : {dt:.1f}s")
+        print(f"\n  {_color('LLM is working — usable for form answers.', 'green')}")
+    else:
+        print(f"  Reply    : {_color('(empty)', 'yellow')}")
+        print(f"\n  {_color('Reachable but returned no text.', 'yellow')} If this is a rerank or "
+              "embedding\n  model, it cannot generate answers — pick a chat/completion model instead.")
+        sys.exit(1)
+
+
 def cmd_apply(args):
     """Submit applications to external ATS forms from a list of apply URLs.
 
@@ -657,6 +743,8 @@ def build_parser() -> argparse.ArgumentParser:
               lla apply URL [URL ...]          Submit external ATS applications
               lla apply --file urls.txt        Batch-apply from a file
               lla apply --file urls.txt --dry-run   Preview ATS detection
+              lla test-llm                     Verify your configured LLM works
+              lla test-llm --provider openrouter --model nvidia/nemotron-3-super-120b-a12b:free
               lla stats                        Show statistics
               lla validate-config              Check config.yaml
               lla skill-gaps                   Skill gap report
@@ -673,6 +761,14 @@ def build_parser() -> argparse.ArgumentParser:
 
     # --- run ---
     subs.add_parser("run", help="Start the main bot")
+
+    # --- test-llm ---
+    p = subs.add_parser("test-llm", help="Send one prompt to the configured LLM to verify it works")
+    p.add_argument("--provider", help="Override provider (openrouter, gemini, ollama, lmstudio, ...)")
+    p.add_argument("--model", help="Override model id (e.g. nvidia/nemotron-3-super-120b-a12b:free)")
+    p.add_argument("--base-url", dest="base_url", help="Override base URL (for local/self-hosted)")
+    p.add_argument("--api-key", dest="api_key", help="Override API key (else config / env var)")
+    p.add_argument("--prompt", help="Custom test prompt")
 
     # --- apply ---
     p = subs.add_parser("apply", help="Submit external ATS applications from apply URLs")
@@ -791,6 +887,7 @@ def build_parser() -> argparse.ArgumentParser:
 COMMAND_MAP = {
     "run": cmd_run,
     "apply": cmd_apply,
+    "test-llm": cmd_test_llm,
     "evaluate": cmd_evaluate,
     "score": cmd_score,
     "compare-offers": cmd_compare_offers,

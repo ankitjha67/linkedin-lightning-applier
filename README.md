@@ -277,10 +277,10 @@ tools_layer.py          Protocol-agnostic tool layer (MCP/adapter foundation)
 careers_scanner.py      Curated company careers-page scanner (Greenhouse/Lever/Ashby)
 companies.json          Curated target-company database (30+ companies)
 pyproject.toml          PyPI packaging — `pip install` + `lla` CLI entry point
-tests/                  251 unit + integration tests
+tests/                  256 unit + integration tests
 ```
 
-31,132 lines across 89 Python files and 55 features. Includes 251 unit tests.
+31,132 lines across 89 Python files and 55 features. Includes 256 unit tests.
 
 ## AI Providers
 
@@ -300,6 +300,21 @@ tests/                  251 unit + integration tests
 Set `provider` and `fallback_provider` in config. The bot tries: keyword matching (free) -> primary AI -> fallback AI.
 
 **Claude CLI** (`provider: claude_cli`) uses your local `claude` binary as the LLM backend — zero API cost if you already have Claude Code. **OpenRouter** (`provider: openrouter`) auto-falls-back through a chain of free models on rate limit — zero cost, no credit card.
+
+**Test any model before relying on it:**
+
+```bash
+lla test-llm                      # test whatever is in config.yaml
+lla test-llm --provider ollama --model llama3.1                      # local, no key
+lla test-llm --provider openrouter --model nvidia/nemotron-3-super-120b-a12b:free
+```
+
+It sends one real prompt and prints the reply, latency, and the resolved
+provider/model/base-url — surfacing the actual error on failure (bad model id,
+auth, unreachable server). Note: only **chat/completion** models work for form
+answers. **Rerank/embedding models cannot generate text** — e.g. an ID with
+`rerank` in it (like `…-nemotron-rerank-vl-…`) will fail the test. Pick a chat
+model instead.
 
 ## MCP Server (Claude Code / Claude Desktop)
 
@@ -441,7 +456,7 @@ Extension points: ATS handlers, job platforms, resume templates, role archetypes
 ## Testing
 
 ```bash
-# Run all 251 tests
+# Run all 256 tests
 python -m unittest discover -s tests -v
 
 # Run specific test module
