@@ -347,6 +347,13 @@ questions, uploads your resume, creates accounts on login-gated portals
 result to SQLite (`applied_jobs` / `failed_jobs`), so re-runs skip anything
 already submitted. Exit status is `0` only if every attempted URL submitted.
 
+The AI that answers open questions is **whatever LLM you configure** — not tied
+to any one provider. Use a cloud model (Gemini, OpenAI, Anthropic, Groq,
+DeepSeek, OpenRouter's free chain, Claude CLI) or a **fully local model**
+(Ollama / LM Studio) that needs **no API key and makes no cloud calls** — a nice
+fit for a job tool handling your personal data. See [AI Providers](#ai-providers).
+Keyword matching still fills ~90% of fields even with AI disabled.
+
 **Workflow to close the loop:** find jobs however you like → collect the apply
 links into `urls.txt` (or a CSV) → `python apply_urls.py --file urls.txt`.
 
