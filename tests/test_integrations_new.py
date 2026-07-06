@@ -23,7 +23,9 @@ class TestNewAIProviders(unittest.TestCase):
         self.assertEqual(ai.provider, "openrouter")
         self.assertEqual(ai.base_url, "https://openrouter.ai/api/v1")
         self.assertEqual(ai.openrouter_chain, OPENROUTER_FREE_CHAIN)
-        self.assertEqual(len(ai.openrouter_chain), 4)
+        # Default chain is non-empty and every entry is a free-tier model id.
+        self.assertTrue(ai.openrouter_chain)
+        self.assertTrue(all(m.endswith(":free") for m in ai.openrouter_chain))
 
     def test_openrouter_custom_chain(self):
         from ai import AIAnswerer

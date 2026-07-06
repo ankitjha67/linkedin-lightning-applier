@@ -14,9 +14,9 @@ Flow:
 All providers use the OpenAI client library (they all support OpenAI-compatible APIs).
 """
 
+import hashlib
 import json
 import logging
-import hashlib
 import sqlite3
 from pathlib import Path
 from typing import Optional
@@ -51,12 +51,12 @@ DEFAULT_MODELS = {
     "claude_cli": "",  # empty = Claude Code's default model
 }
 
-# OpenRouter free-tier fallback chain — tried in order on rate limit (zero cost)
+# OpenRouter free-tier fallback chain — tried in order on rate limit (zero cost).
+# All IDs verified live on OpenRouter (the previous default had 3 delisted models).
 OPENROUTER_FREE_CHAIN = [
     "meta-llama/llama-3.3-70b-instruct:free",
-    "nvidia/llama-3.1-nemotron-70b-instruct:free",
-    "google/gemma-2-9b-it:free",
-    "qwen/qwen-2.5-72b-instruct:free",
+    "nvidia/nemotron-3-super-120b-a12b:free",
+    "nvidia/nemotron-nano-9b-v2:free",
 ]
 
 
@@ -492,8 +492,8 @@ RULES:
         Uses --strict-mcp-config to suppress MCP servers in the subprocess,
         reducing context overhead. Requires Claude Code installed + authenticated.
         """
-        import subprocess
         import json as _json
+        import subprocess
 
         cmd = [
             "claude", "--print", "--output-format", "json",

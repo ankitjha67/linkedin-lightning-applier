@@ -10,6 +10,15 @@
   silent `""` that `AIAnswerer.generate()` returns on failure, and flags models
   that return no text (rerank/embedding models can't generate answers). +5 tests.
 
+### Fixed
+- **`validate_config` no longer flags `openrouter`/`claude_cli` as "unknown AI
+  provider"** — both are fully supported by `ai.py` but were missing from the
+  validator's allowlist.
+- **Refreshed the default `OPENROUTER_FREE_CHAIN`** — 3 of its 4 models had been
+  delisted from OpenRouter. Now three verified-live free models
+  (Llama-3.3-70B, Nemotron-3-Super-120B, Nemotron-Nano-9B). The provider-init
+  test no longer pins a magic chain length.
+
 ## v2.8.0 — Multi-ATS Auto-Apply (12 platforms, incl. Workday)
 
 ### Added
