@@ -1,5 +1,55 @@
 # Changelog
 
+## v2.8.0 — Multi-ATS Auto-Apply (12 platforms, incl. Workday)
+
+### Added
+- **`ats_handlers/` package** — a plugin registry that drives external
+  applications across **12 ATS platforms**: Workday, Greenhouse, Lever, Ashby,
+  SmartRecruiters, Workable, Jobvite, BambooHR, iCIMS, Taleo, SuccessFactors,
+  and ADP (was 4: Greenhouse/Lever/Workday/Ashby).
+  - `base.py` — `ATSHandler` with the hard-won primitives: React-friendly
+    `fill_text` (dispatches input/change events), `select_custom_dropdown`
+    (ARIA listboxes, not native `<select>`), `click_button` (text OR
+    `data-automation-id` OR aria-label), `run_multistep` wizard loop with
+    terminal-state detection, `sweep_page`, `keyword_match`, `upload_file`.
+  - `generic.py` — `SinglePageHandler` / `MultiStepHandler` shapes plus
+    `AccountMixin` for login-gated portals.
+  - `handlers.py` — 11 thin per-platform subclasses.
+  - `workday.py` — robust **Workday** handler: account creation/sign-in reused
+    across every company tenant, multi-page wizard (My Information → Experience →
+    Questions → Voluntary Disclosures → Self-Identify → Review → Submit),
+    targeting the stable `data-automation-id` attributes that are identical on
+    every Workday tenant. Voluntary self-ID defaults to "decline to answer".
+  - `__init__.py` — registry: `detect_ats(url)`, `get_handler(name)`,
+    `handler_for_url(url)`.
+- **`external_apply.ats_accounts`** config — credentials for login-gated ATSes
+  (Workday, iCIMS, Taleo, SuccessFactors, ADP). One email+password is reused
+  per platform; account created on first visit, signed into thereafter. Supports
+  optional per-tenant Workday overrides. Missing creds → platform skipped, not
+  failed. Also added `max_wizard_pages` and `slow_mo_seconds` knobs.
+- **25 new tests** (`tests/test_ats_handlers.py`) — detection across all 12
+  platforms, registry wiring, handler shapes/account flags, Workday per-tenant
+  credential resolution, and keyword-match field logic. Suite: 217 → 242.
+
+### Changed
+- **`external_apply.py`** is now a thin orchestrator (tab management, per-cycle
+  caps, ATS detection) that delegates form filling to `ats_handlers/`. Its
+  public API (`.enabled`, `.can_apply()`, `.detect_ats()`, `.apply_external()`,
+  `.max_per_cycle`, `.applied_this_cycle`) is unchanged — `main.py` needs no
+  edits. `supported_ats` now defaults to all 12 platforms.
+- `pyproject.toml` 2.7.1 → 2.8.0; wheel now bundles `ats_handlers/**`.
+- README, CONFIGURATION.md, ARCHITECTURE.md updated with the 12-platform list,
+  the per-platform handling table, and the handler-framework design.
+
+### Notes
+- Adding a new ATS is two edits: a subclass in `ats_handlers/handlers.py` and a
+  URL pattern in `ats_handlers/__init__.py`. No changes to `external_apply.py`
+  or `main.py` required.
+- Login-gated enterprise portals (iCIMS/Taleo/SuccessFactors/ADP) use a
+  best-effort generic register-or-sign-in flow; Workday's flow is fully custom.
+
+---
+
 ## v2.7.1 — Stale-data refresh
 
 ### Changed

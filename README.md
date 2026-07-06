@@ -1,6 +1,6 @@
 # LinkedIn Lightning Applier
 
-Autonomous job application engine. Searches LinkedIn every 10 minutes, applies the moment jobs appear, tailors your resume per job using AI, scores job-candidate fit, messages recruiters, scrapes Google Jobs for cross-platform discovery, fills external ATS forms (Greenhouse, Lever, Workday), tracks everything in SQLite, and serves a real-time monitoring dashboard — all running 24/7.
+Autonomous job application engine. Searches LinkedIn every 10 minutes, applies the moment jobs appear, tailors your resume per job using AI, scores job-candidate fit, messages recruiters, scrapes Google Jobs for cross-platform discovery, fills external ATS forms on 12 platforms (Workday, Greenhouse, Lever, iCIMS, Taleo, and more), tracks everything in SQLite, and serves a real-time monitoring dashboard — all running 24/7.
 
 Built because the difference between "applied 2 minutes after posting" and "applied 24 hours later" is the difference between getting an interview and getting buried under 500 applicants.
 
@@ -11,7 +11,7 @@ The bot runs in a continuous loop. Every cycle:
 1. **Discovers jobs** — Searches LinkedIn across all your configured terms and locations. Optionally scrapes Google Jobs for cross-platform coverage (Indeed, Glassdoor, company sites).
 2. **Scores every job** — AI compares the job description against your CV and scores the match 0-100%. Jobs below your threshold (e.g. 70%) are skipped automatically.
 3. **Tailors your resume** — For jobs above the threshold, AI generates a custom PDF resume emphasizing the skills that match this specific job description.
-4. **Applies** — Clicks Easy Apply (LinkedIn) or fills external ATS forms (Greenhouse, Lever, Workday, Ashby). Keyword matching handles 90% of form fields for free; AI fills the rest.
+4. **Applies** — Clicks Easy Apply (LinkedIn) or fills external ATS forms across 12 platforms (Workday, Greenhouse, Lever, Ashby, SmartRecruiters, Workable, Jobvite, BambooHR, iCIMS, Taleo, SuccessFactors, ADP). Creates accounts and drives multi-page wizards where required. Keyword matching handles 90% of form fields for free; AI fills the rest.
 5. **Messages recruiters** — After applying, queues a personalized LinkedIn message to the hiring manager with a configurable delay (e.g. 2 hours).
 6. **Generates interview prep** — Company research, likely interview questions, and talking points mapped to the JD — saved per job.
 7. **Tracks everything** — Applied/skipped/failed jobs, recruiter directory, visa sponsors, salary benchmarks, match scores, response tracking with ML prediction.
@@ -25,7 +25,7 @@ The bot runs in a continuous loop. Every cycle:
 - **AI Match Scoring** — Scores jobs 0-100% before applying. Trained logistic regression predicts response probability.
 - **AI Resume Tailoring** — Generates custom PDF/DOCX resumes per job using your master CV + the JD. Uploads automatically.
 - **Auto Recruiter Messaging** — AI-generated personalized messages sent via LinkedIn messaging with configurable delay.
-- **External ATS Apply** — Fills Greenhouse, Lever, Workday, and Ashby application forms using AI.
+- **External ATS Apply** — Fills application forms on **12 ATS platforms**: Workday, Greenhouse, Lever, Ashby, SmartRecruiters, Workable, Jobvite, BambooHR, iCIMS, Taleo, SuccessFactors, and ADP. Handles Workday's account-creation + multi-page wizard, custom React dropdowns, and login-gated enterprise portals. Keyword matching fills ~90% of fields for free; AI handles the rest.
 - **Google Jobs Scraping** — Discovers jobs across all platforms via Google Jobs. LinkedIn-linked results processed directly; ATS results handed to the external applier.
 
 ### Tier 2 — Intelligence & Monitoring
@@ -169,7 +169,11 @@ recruiter_messaging:
 
 external_apply:
   enabled: true
-  supported_ats: ["greenhouse", "lever", "workday", "ashby"]
+  supported_ats: ["workday", "greenhouse", "lever", "ashby", "smartrecruiters",
+                  "workable", "jobvite", "bamboohr", "icims", "taleo",
+                  "successfactors", "adp"]
+  ats_accounts:                 # creds for login-gated ATSes (workday, icims, ...)
+    workday: { email: "", password: "" }
 
 google_jobs:
   enabled: true
@@ -222,7 +226,8 @@ match_scorer.py         AI match scoring engine (0-100%)
 resume_tailor.py        AI resume generation — PDF/DOCX/TXT output
 recruiter_messenger.py  Message queue with scheduled delivery
 google_jobs_scraper.py  Google Jobs scraping — Selenium, SerpAPI, or requests
-external_apply.py       ATS form filling — Greenhouse, Lever, Workday, Ashby
+external_apply.py       ATS orchestrator — tab mgmt, detection, per-cycle caps
+ats_handlers/           12 ATS handlers (Workday, Greenhouse, iCIMS, Taleo, ...)
 activity_sim.py         Human behavior simulation — feed, likes, profile views
 alerts.py               Telegram / Discord / Slack notifications
 dashboard.py            Flask real-time dashboard with dark theme

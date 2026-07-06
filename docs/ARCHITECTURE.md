@@ -50,7 +50,7 @@ Match Scoring (AI scores 0-100%)  -----> match_scores table
 Resume Tailoring (AI generates custom PDF)  -----> data/tailored_resumes/
     |
     v
-Apply: Easy Apply (LinkedIn) OR External ATS (Greenhouse/Lever/Workday)
+Apply: Easy Apply (LinkedIn) OR External ATS (12 platforms via ats_handlers/)
     |
     |--- SUCCESS ---+
     |               |
@@ -114,7 +114,8 @@ main.py
   ├── resume_tailor.py  (depends on: ai.py, optional: fpdf2, python-docx)
   ├── google_jobs_scraper.py (depends on: state.py, optional: selenium, beautifulsoup4, serpapi)
   ├── activity_sim.py   (depends on: selenium)
-  ├── external_apply.py (depends on: ai.py, selenium)
+  ├── external_apply.py (depends on: ai.py, selenium, ats_handlers/)
+  │     └── ats_handlers/  (12 ATS handlers: base + generic shapes + registry)
   ├── recruiter_messenger.py (depends on: ai.py, state.py, selenium)
   ├── alerts.py         (optional: requests)
   ├── dashboard.py      (depends on: state.py, optional: flask)
@@ -140,6 +141,44 @@ main.py
 ```
 
 Every module except the 4 core files (main, linkedin, ai, state) is imported with `try/except` and degrades gracefully if missing or disabled.
+
+## ATS Handler Framework
+
+`external_apply.py` is a thin orchestrator (tab management, per-cycle caps, ATS
+detection). The actual form filling lives in the `ats_handlers/` package, a
+plugin registry that maps an application URL to a platform-specific handler.
+
+```
+ats_handlers/
+  base.py        ATSHandler — shared primitives (fill_text, select_custom_dropdown,
+                 click_button, run_multistep, sweep_page, keyword_match, upload_file…)
+  generic.py     SinglePageHandler / MultiStepHandler / AccountMixin / GenericHandler
+  handlers.py    11 thin per-platform subclasses (Greenhouse, Lever, iCIMS, Taleo…)
+  workday.py     WorkdayHandler — account flow + multi-page wizard, data-automation-id
+  __init__.py    registry: detect_ats(url), get_handler(name), handler_for_url(url)
+```
+
+Design principles:
+
+- **Stable selectors over fragile ones.** Workday exposes the same
+  `data-automation-id` attributes across every company tenant, so one handler
+  drives all of them. The base targets those before falling back to labels.
+- **Two shapes cover most ATSes.** `SinglePageHandler` (fill once → submit) and
+  `MultiStepHandler` (optional login → Next/Submit wizard loop). A new platform
+  is usually a ~5-line subclass plus a URL pattern.
+- **React-friendly.** `fill_text` dispatches `input`/`change` events; dropdowns
+  are opened as ARIA listboxes, not treated as native `<select>`.
+- **Login-gated platforms** (Workday, iCIMS, Taleo, SuccessFactors, ADP) reuse a
+  single email+password from `external_apply.ats_accounts`, creating the account
+  on first visit and signing in thereafter. Missing credentials → skip, not fail.
+
+```
+apply_url ──> detect_ats() ──> get_handler() ──> handler.apply(driver, ctx, resume)
+                                                        │
+                        ┌───────────────────────────────┼───────────────────────────┐
+                   SinglePage                       Workday                      MultiStep
+                (sweep → submit)          (auth → per-page wizard)      (login → Next/Submit loop)
+```
 
 ## Database Schema
 

@@ -338,17 +338,54 @@ recruiter_messaging:
   skip_if_no_profile_url: true
 
 # ═══════════════════════════════════════════════════════════════
-# EXTERNAL APPLY — Fill ATS forms (Greenhouse, Lever, Workday)
+# EXTERNAL APPLY — Fill ATS forms on 12 platforms
 # ═══════════════════════════════════════════════════════════════
 external_apply:
   enabled: true
+  # Which ATS platforms to auto-apply on. Remove any you don't want.
+  # Login-gated platforms (workday, icims, taleo, successfactors, adp) need
+  # credentials under `ats_accounts` below, or they'll be skipped.
   supported_ats:
-    - "greenhouse"
-    - "lever"
-    - "workday"
-    - "ashby"
+    - "workday"          # enterprise wizard (Amazon, NVIDIA, Salesforce, ...)
+    - "greenhouse"       # boards.greenhouse.io
+    - "lever"            # jobs.lever.co
+    - "ashby"            # jobs.ashbyhq.com
+    - "smartrecruiters"  # jobs.smartrecruiters.com
+    - "workable"         # apply.workable.com
+    - "jobvite"          # jobs.jobvite.com
+    - "bamboohr"         # *.bamboohr.com
+    - "icims"            # *.icims.com (login required)
+    - "taleo"            # *.taleo.net (Oracle, login required)
+    - "successfactors"   # SAP SuccessFactors (login required)
+    - "adp"              # ADP recruiting (login required)
   max_external_per_cycle: 5
   timeout_seconds: 120
+  max_wizard_pages: 12          # safety cap on multi-step wizard loops
+  slow_mo_seconds: 0.0          # add a pause after each field (debugging)
+
+  # Credentials for ATSes that force account creation before applying.
+  # The bot reuses one email+password across every tenant of a platform:
+  # it creates the account on first visit, signs in on return visits.
+  # SECURITY: keep these in config.yaml (gitignored) — never commit real creds.
+  ats_accounts:
+    workday:
+      email: ""                 # defaults to personal.email if blank
+      password: ""              # choose a strong, unique password
+      # Optional per-tenant overrides if a company needs a different login:
+      # tenants:
+      #   nvidia.wd5.myworkdayjobs.com: { email: "you@x.com", password: "..." }
+    icims:
+      email: ""
+      password: ""
+    taleo:
+      email: ""
+      password: ""
+    successfactors:
+      email: ""
+      password: ""
+    adp:
+      email: ""
+      password: ""
 
 # ═══════════════════════════════════════════════════════════════
 # GOOGLE JOBS — Scrape Google Jobs for additional job discovery
