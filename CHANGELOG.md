@@ -3,6 +3,30 @@
 ## Unreleased
 
 ### Added
+- **Professional application-document pipeline** (inspired by
+  MadsLorentzen/ai-job-search, adapted to this repo's Python architecture):
+  - **`latex_docs.py`** — typeset **moderncv** CV + cover letter. Pure-function
+    renderers (`render_cv_tex` / `render_cover_tex`) plus `LaTeXDocsBuilder` that
+    reads identity from config, writes `.tex`, and compiles to PDF with
+    lualatex/xelatex/pdflatex when installed (graceful `.tex`-only fallback).
+    Uses the standard `moderncv` package — nothing vendored.
+  - **`ats_pdf_check.py`** — verify a CV the way an ATS parser sees it:
+    `extract_pdf_text` (pdftotext → pdfminer), `check_parseability` (contact
+    details present, reading order, glyph garbage), `keyword_coverage`, and a
+    combined `ats_report`. Honesty rule: genuine gaps are surfaced, never stuffed.
+  - **`relevance_cutter.py`** — trim a CV to a line budget by
+    relevance×uniqueness×cover-dependency, not by age; preserves order.
+  - **`doc_reviewer.py`** — drafter-reviewer loop: `review` → `revise` →
+    `check_honesty` (flags claims the profile doesn't support). Degrades to
+    no-ops without AI.
+  - **`lla docs`** command — one shot: tailor CV + cover letter, compile, ATS
+    keyword-coverage report, reviewer critique, and honesty check.
+  - **`.claude/` integration** — a `/apply` slash command and a
+    `job-application-assistant` skill for a human-in-the-loop apply flow inside
+    Claude Code (this repo previously had no `.claude/` skills or commands).
+  - +21 tests (`tests/test_application_docs.py`). Optional dep: `pdfminer.six`
+    (extra `ats`). Fixed a tokenizer bug that captured trailing sentence
+    punctuation ("SQL." → "sql." ) in keyword extraction.
 - **`lla test-llm` command** — send one real prompt to the configured (or
   `--provider`/`--model`/`--base-url`/`--api-key` overridden) LLM and print the
   reply, latency, and resolved provider/model. Uses a low-level probe that

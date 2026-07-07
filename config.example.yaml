@@ -536,6 +536,19 @@ cover_letter:
   length: "medium"               # short, medium, full
 
 # ═══════════════════════════════════════════════════════════════
+# LATEX DOCS — typeset CV + cover letter (moderncv) via `lla docs` / /apply
+# ═══════════════════════════════════════════════════════════════
+latex_docs:
+  enabled: true
+  output_dir: "data/latex_docs"
+  cv_style: "banking"            # moderncv style: banking, classic, casual, oldstyle
+  cv_color: "blue"              # moderncv color: blue, orange, green, red, purple, grey, black
+  engine: ""                    # "" = auto-detect (lualatex > xelatex > pdflatex)
+  # Compilation needs a LaTeX distribution (TeX Live / MiKTeX) with `moderncv`.
+  # The ATS text-layer check uses `pdftotext` (poppler) or the pdfminer.six
+  # package if installed; otherwise it checks the plain-text content.
+
+# ═══════════════════════════════════════════════════════════════
 # SKILL GAP ANALYSIS — Aggregate skills, identify gaps
 # ═══════════════════════════════════════════════════════════════
 skill_gap_analysis:

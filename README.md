@@ -277,10 +277,10 @@ tools_layer.py          Protocol-agnostic tool layer (MCP/adapter foundation)
 careers_scanner.py      Curated company careers-page scanner (Greenhouse/Lever/Ashby)
 companies.json          Curated target-company database (30+ companies)
 pyproject.toml          PyPI packaging — `pip install` + `lla` CLI entry point
-tests/                  256 unit + integration tests
+tests/                  277 unit + integration tests
 ```
 
-31,132 lines across 89 Python files and 55 features. Includes 256 unit tests.
+32,240 lines across 95 Python files and 55 features. Includes 277 unit tests.
 
 ## AI Providers
 
@@ -372,6 +372,36 @@ Keyword matching still fills ~90% of fields even with AI disabled.
 **Workflow to close the loop:** find jobs however you like → collect the apply
 links into `urls.txt` (or a CSV) → `python apply_urls.py --file urls.txt`.
 
+## Tailored Application Documents (LaTeX CV + cover letter)
+
+Beyond the bot's fpdf2 resumes, `lla docs` produces **typeset LaTeX documents** —
+a `moderncv` CV and a matching cover letter — tailored to a specific posting,
+with three quality gates built in:
+
+```bash
+lla docs --jd-file jd.txt --title "Credit Risk Manager" --company "Monzo"
+```
+
+- **ATS text-layer check** — scores the CV's keyword coverage against the posting
+  and verifies it parses the way an ATS actually reads it (contact details as
+  literal text, sane reading order, no glyph garbage).
+- **Drafter → reviewer loop** — a second AI pass critiques the draft (missed
+  keywords, weak framing, generic language), then revises.
+- **Honesty check** — flags any claim the draft makes that your profile
+  (`ai.cv_text` + `documents/`) doesn't support. Real gaps stay visible; nothing
+  is fabricated or keyword-stuffed.
+
+Compiles to PDF if a LaTeX engine (TeX Live / MiKTeX with `moderncv`) is
+installed; otherwise it writes the `.tex` for you to compile. The ATS check uses
+`pdftotext` or `pip install pdfminer.six` when available, else the plain text.
+
+**Inside Claude Code**, the `/apply <url-or-jd>` slash command runs the whole
+human-in-the-loop flow (evaluate fit → tailor docs → ATS/review/honesty → confirm
+→ optionally submit), and the `job-application-assistant` skill documents the
+modules. This complements the autonomous bot and the batch `lla apply` submitter.
+
+_Document-quality approach inspired by [MadsLorentzen/ai-job-search](https://github.com/MadsLorentzen/ai-job-search) (MIT), reworked as testable Python modules._
+
 ## Careers-Page Scanner
 
 A targeted, company-first discovery mode that complements LinkedIn/Google search. Scans a curated `companies.json` (30+ companies, extensible) via **free** ATS JSON APIs (Greenhouse, Lever, Ashby) with HTML-scraping fallback — no paid API needed. Enable with `careers_scanner.enabled: true`. Scores every role with your match scorer and surfaces the top matches.
@@ -456,7 +486,7 @@ Extension points: ATS handlers, job platforms, resume templates, role archetypes
 ## Testing
 
 ```bash
-# Run all 256 tests
+# Run all 277 tests
 python -m unittest discover -s tests -v
 
 # Run specific test module

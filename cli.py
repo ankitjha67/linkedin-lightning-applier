@@ -181,6 +181,124 @@ def _probe_llm(ai, prompt: str) -> str:
     return (resp.choices[0].message.content or "").strip()
 
 
+def cmd_docs(args):
+    """Generate a tailored LaTeX CV + cover letter for a job, with ATS + review checks.
+
+    Ties together latex_docs (typeset PDFs), ats_pdf_check (keyword coverage +
+    parseability), and doc_reviewer (drafter-reviewer critique + honesty check).
+    Compiles to PDF if a LaTeX engine is installed; otherwise writes .tex.
+    """
+    _print_banner("Tailored Application Documents")
+    cfg = _load_config(args.config)
+    ai = _init_ai(cfg)
+
+    jd = args.jd or ""
+    if args.jd_file:
+        jd = Path(args.jd_file).read_text(encoding="utf-8")
+    if not jd:
+        print("  Provide a job description with --jd '...' or --jd-file path.txt")
+        return
+    title, company = args.title or "the role", args.company or "the company"
+    cv_text = cfg.get("ai", {}).get("cv_text", "") or cfg.get("ai", {}).get("cv_summary", "")
+
+    from ats_pdf_check import ats_report
+    from doc_reviewer import DocumentReviewer
+    from latex_docs import LaTeXDocsBuilder, available_engine
+
+    # --- content (AI-tailored, with graceful fallback) ---
+    profile_stmt, competencies, cover_paras = _tailor_doc_content(
+        ai, cv_text, title, company, jd)
+
+    builder = LaTeXDocsBuilder(cfg)
+    cv_res = builder.build_cv({"title": title, "profile": profile_stmt,
+                               "competencies": competencies}, basename="cv")
+    cover_res = builder.build_cover_letter(
+        {"company": company, "opening": f"Dear {company} Hiring Team,",
+         "paragraphs": cover_paras}, basename="cover_letter")
+
+    # --- ATS check (on the compiled PDF text layer if available, else plain text) ---
+    from ats_pdf_check import extract_pdf_text
+    cv_plain = "\n".join([
+        f"{cfg.get('personal', {}).get('full_name', '')} "
+        f"{cfg.get('personal', {}).get('email', '')} "
+        f"{cfg.get('personal', {}).get('phone', '')}",
+        profile_stmt, "\n".join(competencies), cv_text,
+    ])
+    pdf_text = extract_pdf_text(cv_res["pdf"]) if cv_res.get("pdf") else None
+    report = ats_report(pdf_text or cv_plain, jd, cfg.get("personal", {}),
+                        min_coverage=args.min_coverage)
+
+    # --- drafter-reviewer critique on the cover letter ---
+    reviewer = DocumentReviewer(ai)
+    loop = reviewer.draft_review_revise(
+        "\n\n".join(cover_paras), "cover letter", title, company, jd, cv_text)
+
+    # --- report ---
+    eng = available_engine()
+    print(f"  Engine     : {eng or 'none (wrote .tex only — install TeX Live to compile)'}")
+    print(f"  CV         : {cv_res['tex']}" + (f"  →  {cv_res['pdf']}" if cv_res.get('pdf') else ""))
+    print(f"  Cover      : {cover_res['tex']}" + (f"  →  {cover_res['pdf']}" if cover_res.get('pdf') else ""))
+    print()
+    color = "green" if report["passed"] else "yellow"
+    print(f"  ATS check  : {_color(('PASS' if report['passed'] else 'REVIEW'), color)}  "
+          f"(keyword coverage {report['coverage_pct']}%, min {report['min_coverage']}%)")
+    if report["missing_keywords"]:
+        print(f"    Missing keywords: {', '.join(report['missing_keywords'][:12])}")
+    for issue in report["issues"]:
+        print(f"    ⚠ {issue}")
+    if loop["critique"]:
+        print("\n  Reviewer critique (cover letter):")
+        for line in loop["critique"].splitlines()[:8]:
+            if line.strip():
+                print(f"    {line.strip()}")
+    if loop["honesty_flags"]:
+        print(f"\n  {_color('Honesty check flagged claims to verify:', 'red')}")
+        for f in loop["honesty_flags"]:
+            print(f"    • {f}")
+    else:
+        print(f"\n  {_color('Honesty check: all claims supported by profile.', 'green')}")
+
+
+def _tailor_doc_content(ai, cv_text, title, company, jd):
+    """Return (profile_statement, competencies:list, cover_paragraphs:list).
+
+    Uses AI when available; falls back to sensible non-AI defaults so the command
+    always produces a document.
+    """
+    if not (ai and getattr(ai, "enabled", False)):
+        prof = (cv_text.strip().split("\n")[0] if cv_text else
+                f"Candidate applying for {title}.")
+        return prof, ["See attached CV for full competencies."], [
+            f"I am writing to apply for the {title} position at {company}.",
+            "My background aligns with the requirements outlined in the posting.",
+            "I would welcome the opportunity to discuss my fit further.",
+        ]
+    try:
+        prof = ai.generate(
+            f"Write a 3-4 line CV profile statement for a {title} application at "
+            f"{company}, grounded ONLY in this candidate background:\n{cv_text[:2000]}\n\n"
+            f"Job posting:\n{jd[:1200]}\nReturn only the statement.",
+            system="You write concise, truthful CV profile statements. Never invent facts.")
+        comp_raw = ai.generate(
+            f"List 5 core competencies (one per line, no numbering) for this candidate "
+            f"tailored to the posting. Ground them in the background; do not invent.\n"
+            f"Background:\n{cv_text[:2000]}\nPosting:\n{jd[:1000]}",
+            system="You extract truthful, posting-relevant competencies.")
+        competencies = [c.strip("-• \t") for c in (comp_raw or "").splitlines() if c.strip()][:6]
+        cover_raw = ai.generate(
+            f"Write 3 short cover-letter paragraphs for the {title} role at {company}. "
+            f"Truthful, specific, forward-looking. Ground in:\n{cv_text[:2000]}\n"
+            f"Posting:\n{jd[:1200]}\nReturn paragraphs separated by blank lines.",
+            system="You write authentic, non-generic cover letters. Never fabricate.")
+        paras = [p.strip() for p in (cover_raw or "").split("\n\n") if p.strip()][:4]
+        return (prof or f"Candidate for {title}.",
+                competencies or ["See CV."],
+                paras or [f"I am applying for {title} at {company}."])
+    except Exception:
+        return (f"Candidate for {title}.", ["See CV."],
+                [f"I am applying for {title} at {company}."])
+
+
 def cmd_test_llm(args):
     """Send one real prompt to the configured (or overridden) LLM and print the reply.
 
@@ -743,6 +861,7 @@ def build_parser() -> argparse.ArgumentParser:
               lla apply URL [URL ...]          Submit external ATS applications
               lla apply --file urls.txt        Batch-apply from a file
               lla apply --file urls.txt --dry-run   Preview ATS detection
+              lla docs --jd-file jd.txt --title "Risk Manager" --company "Monzo"
               lla test-llm                     Verify your configured LLM works
               lla test-llm --provider openrouter --model nvidia/nemotron-3-super-120b-a12b:free
               lla stats                        Show statistics
@@ -761,6 +880,15 @@ def build_parser() -> argparse.ArgumentParser:
 
     # --- run ---
     subs.add_parser("run", help="Start the main bot")
+
+    # --- docs ---
+    p = subs.add_parser("docs", help="Generate tailored LaTeX CV + cover letter (ATS + review checks)")
+    p.add_argument("--jd", help="Job description text")
+    p.add_argument("--jd-file", dest="jd_file", help="Path to a file with the job description")
+    p.add_argument("--title", help="Job title")
+    p.add_argument("--company", help="Company name")
+    p.add_argument("--min-coverage", dest="min_coverage", type=int, default=60,
+                   help="Min ATS keyword-coverage %% to pass (default 60)")
 
     # --- test-llm ---
     p = subs.add_parser("test-llm", help="Send one prompt to the configured LLM to verify it works")
@@ -887,6 +1015,7 @@ def build_parser() -> argparse.ArgumentParser:
 COMMAND_MAP = {
     "run": cmd_run,
     "apply": cmd_apply,
+    "docs": cmd_docs,
     "test-llm": cmd_test_llm,
     "evaluate": cmd_evaluate,
     "score": cmd_score,
