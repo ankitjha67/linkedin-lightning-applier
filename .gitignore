@@ -38,3 +38,7 @@ Thumbs.db
 # Chrome profile
 chrome-lla-profile/
 .env
+
+# Personal career materials — keep folder structure + README, ignore contents
+documents/*/*
+!documents/*/.gitkeep

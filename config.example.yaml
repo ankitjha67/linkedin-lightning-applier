@@ -540,6 +540,10 @@ cover_letter:
 # ═══════════════════════════════════════════════════════════════
 latex_docs:
   enabled: true
+  auto_generate: false          # true = generate a LaTeX CV for every job in `lla run`
+                                # (needs a LaTeX engine installed; uses the PDF as the
+                                #  upload resume). Off by default — it's slower per job.
+  min_coverage: 60              # ATS keyword-coverage %% target for the check
   output_dir: "data/latex_docs"
   cv_style: "banking"            # moderncv style: banking, classic, casual, oldstyle
   cv_color: "blue"              # moderncv color: blue, orange, green, red, purple, grey, black

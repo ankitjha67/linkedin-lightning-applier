@@ -24,6 +24,16 @@
   - **`.claude/` integration** — a `/apply` slash command and a
     `job-application-assistant` skill for a human-in-the-loop apply flow inside
     Claude Code (this repo previously had no `.claude/` skills or commands).
+  - **`application_docs.py`** — shared `ApplicationDocsGenerator` orchestrator
+    (tailor → build → ATS-check → review) used by both `lla docs` and the loop.
+  - **Autonomous-loop wiring** — when `latex_docs.auto_generate: true`, every
+    above-threshold job in `lla run` gets a typeset LaTeX CV whose compiled PDF
+    becomes the upload resume (threaded through process_page/run_cycle; opt-in,
+    off by default). Graceful when no LaTeX engine is present.
+  - **`/setup` onboarding** — a `setup.md` slash command + `profile_setup.py`
+    (`gather_profile_text`) that turns a `documents/` folder (CV, LinkedIn
+    export, diplomas, references) into profile text for `ai.cv_text`/`personal.*`.
+    Added the `documents/` scaffold (gitignored contents, tracked structure).
   - +21 tests (`tests/test_application_docs.py`). Optional dep: `pdfminer.six`
     (extra `ats`). Fixed a tokenizer bug that captured trailing sentence
     punctuation ("SQL." → "sql." ) in keyword extraction.

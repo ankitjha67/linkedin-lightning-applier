@@ -277,10 +277,10 @@ tools_layer.py          Protocol-agnostic tool layer (MCP/adapter foundation)
 careers_scanner.py      Curated company careers-page scanner (Greenhouse/Lever/Ashby)
 companies.json          Curated target-company database (30+ companies)
 pyproject.toml          PyPI packaging — `pip install` + `lla` CLI entry point
-tests/                  277 unit + integration tests
+tests/                  285 unit + integration tests
 ```
 
-32,240 lines across 95 Python files and 55 features. Includes 277 unit tests.
+32,240 lines across 95 Python files and 55 features. Includes 285 unit tests.
 
 ## AI Providers
 
@@ -395,10 +395,19 @@ Compiles to PDF if a LaTeX engine (TeX Live / MiKTeX with `moderncv`) is
 installed; otherwise it writes the `.tex` for you to compile. The ATS check uses
 `pdftotext` or `pip install pdfminer.six` when available, else the plain text.
 
-**Inside Claude Code**, the `/apply <url-or-jd>` slash command runs the whole
-human-in-the-loop flow (evaluate fit → tailor docs → ATS/review/honesty → confirm
-→ optionally submit), and the `job-application-assistant` skill documents the
-modules. This complements the autonomous bot and the batch `lla apply` submitter.
+Set `latex_docs.auto_generate: true` to have the **autonomous loop** (`lla run`)
+build a tailored LaTeX CV for every above-threshold job and upload the compiled
+PDF as the resume (off by default — it needs a LaTeX engine and is slower per job).
+
+**Inside Claude Code**, two slash commands drive the human-in-the-loop flow:
+- **`/setup`** — turns your `documents/` folder (CV, LinkedIn export, diplomas,
+  references), a pasted CV, or a short interview into your profile
+  (`ai.cv_text` + `personal.*` + search targets).
+- **`/apply <url-or-jd>`** — evaluate fit → tailor docs → ATS/review/honesty →
+  confirm → optionally submit.
+
+The `job-application-assistant` skill documents the modules. This complements the
+autonomous bot and the batch `lla apply` submitter.
 
 _Document-quality approach inspired by [MadsLorentzen/ai-job-search](https://github.com/MadsLorentzen/ai-job-search) (MIT), reworked as testable Python modules._
 
@@ -486,7 +495,7 @@ Extension points: ATS handlers, job platforms, resume templates, role archetypes
 ## Testing
 
 ```bash
-# Run all 277 tests
+# Run all 285 tests
 python -m unittest discover -s tests -v
 
 # Run specific test module

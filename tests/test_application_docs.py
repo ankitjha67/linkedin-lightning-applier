@@ -197,5 +197,52 @@ class TestDocReviewer(unittest.TestCase):
         self.assertEqual(out["honesty_flags"], [])
 
 
+class TestApplicationDocsGenerator(unittest.TestCase):
+    """The shared orchestrator used by `lla docs` and the autonomous loop."""
+
+    def _cfg(self, outdir):
+        return {
+            "personal": {"full_name": "Ada Lovelace", "first_name": "Ada",
+                         "last_name": "Lovelace", "email": "ada@x.com",
+                         "phone": "+44 7700 900000"},
+            "ai": {"cv_text": "Credit risk manager. Basel III, IRB, Python, SQL, RWA."},
+            "latex_docs": {"output_dir": outdir, "min_coverage": 40},
+        }
+
+    def test_tailor_content_fallback_without_ai(self):
+        from application_docs import ApplicationDocsGenerator
+        with tempfile.TemporaryDirectory() as d:
+            gen = ApplicationDocsGenerator(None, self._cfg(d))
+            prof, comps, paras = gen.tailor_content("Risk Mgr", "Monzo", "jd")
+            self.assertTrue(prof and comps and paras)
+            self.assertTrue(any("Monzo" in p for p in paras))
+
+    def test_generate_writes_tex_and_ats_report(self):
+        from application_docs import ApplicationDocsGenerator
+        with tempfile.TemporaryDirectory() as d:
+            gen = ApplicationDocsGenerator(None, self._cfg(d))
+            jd = "Credit Risk Manager: Basel III, IRB, Python, SQL, RWA modelling."
+            res = gen.generate("Credit Risk Manager", "Monzo", jd)
+            self.assertTrue(os.path.exists(res["cv_tex"]))
+            self.assertTrue(os.path.exists(res["cover_tex"]))
+            self.assertIn("coverage_pct", res["ats"])
+            self.assertGreater(res["ats"]["coverage_pct"], 0)
+            if latex_docs.available_engine() is None:
+                self.assertIsNone(res["cv_pdf"])
+            # basenames are slugged per company/role → distinct files
+            self.assertIn("monzo", os.path.basename(res["cv_tex"]).lower())
+
+    def test_generate_uses_ai_when_available(self):
+        from application_docs import ApplicationDocsGenerator
+        ai = MagicMock()
+        ai.enabled = True
+        ai.generate.return_value = "AI content"
+        with tempfile.TemporaryDirectory() as d:
+            gen = ApplicationDocsGenerator(ai, self._cfg(d))
+            res = gen.generate("Risk Mgr", "Monzo", "jd needs SQL")
+            self.assertTrue(ai.generate.called)
+            self.assertTrue(os.path.exists(res["cv_tex"]))
+
+
 if __name__ == "__main__":
     unittest.main()
