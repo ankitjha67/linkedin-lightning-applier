@@ -153,6 +153,15 @@ class BatchApplier:
         self.applier.enabled = True
         self.applier.supported_ats = set(ALL_ATS)
 
+        # Employer-side screener gate (screener.gate: warn|block). Only jobs whose
+        # description is substantial enough to score are gated; URL-only rows skip it.
+        try:
+            from screener_sim import ScreenerSimulator
+            self.screener = ScreenerSimulator(self.ai, cfg)
+        except ImportError:
+            self.screener = None
+        self.cv_text = cfg.get("ai", {}).get("cv_text", "")
+
     def _default_resume(self) -> str:
         for section, key in (("resume", "default_resume_path"),
                              ("resume_tailoring", "master_resume_path")):
@@ -217,6 +226,17 @@ class BatchApplier:
                              i, len(applyable), job["url"][:70])
                     skip += 1
                     continue
+
+                # Screener gate — only when the row carries a scoreable description
+                if self.screener and self.screener.enabled:
+                    g = self.screener.gate(self.cv_text, job["description"])
+                    if g["action"] == "block":
+                        log.info("[%d/%d] 🛡️  Screener gate (%s), skipping: %s",
+                                 i, len(applyable), g["reason"], job["url"][:60])
+                        skip += 1
+                        continue
+                    if g["action"] == "warn":
+                        log.info("   🛡️  Screener warns: %s (submitting anyway)", g["reason"])
 
                 log.info("[%d/%d] %s → %s", i, len(applyable), ats, job["url"][:70])
                 jc = {"title": job["title"], "company": job["company"],

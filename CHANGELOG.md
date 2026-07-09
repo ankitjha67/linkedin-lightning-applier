@@ -17,7 +17,14 @@
   profile caps the open-source category (~10/35), and rank the top projects to
   feature per posting (stars, docs, live demo, recency, JD language/topic
   relevance). Public GitHub API, `GITHUB_TOKEN` optional, fails soft.
-- +23 tests (`tests/test_screener_sim.py`). Suite 285 → 308.
+- **Screener pre-submit gate** — `ScreenerSimulator.gate()` shared by all three
+  submit paths: `lla docs` (prints verdict, exit 2 on block), `lla apply` batch
+  (skips blocked rows), and the autonomous loop (opt-in via
+  `screener.gate_in_run`; blocked jobs are marked skipped with the reason).
+  Config: `screener.gate: off|warn|block`. Fail-open by design: jobs with no
+  substantial description, AI unavailable, or an unparseable evaluation are
+  never blocked.
+- +30 tests (`tests/test_screener_sim.py`). Suite 285 → 315.
 - **Professional application-document pipeline** (inspired by
   MadsLorentzen/ai-job-search, adapted to this repo's Python architecture):
   - **`latex_docs.py`** — typeset **moderncv** CV + cover letter. Pure-function

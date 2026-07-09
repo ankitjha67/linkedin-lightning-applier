@@ -138,6 +138,63 @@ class TestSimulate(unittest.TestCase):
         self.assertIsNone(res["total"])
 
 
+class TestGate(unittest.TestCase):
+    """The shared pre-submit gate used by lla docs, lla apply, and the loop."""
+
+    LONG_JD = "Credit Risk Manager Basel III IRB PD LGD EAD RWA regulatory. " * 5
+
+    def _ai(self, final_score: int):
+        ai = MagicMock()
+        ai.enabled = True
+        ai.generate.return_value = (
+            '{"scores": {"relevant_experience": {"score": %d, "evidence": "e"},'
+            '"domain_expertise": {"score": 0, "evidence": "e"},'
+            '"impact_and_outcomes": {"score": 0, "evidence": "e"},'
+            '"skills_and_tools": {"score": 0, "evidence": "e"}},'
+            '"bonus_points": {"total": 0, "breakdown": "b"},'
+            '"deductions": {"total": 0, "reasons": "r"},'
+            '"key_strengths": ["s"], "areas_for_improvement": ["a"]}' % final_score)
+        return ai
+
+    def test_gate_off(self):
+        sim = ss.ScreenerSimulator(self._ai(0), {"screener": {"gate": "off"}})
+        self.assertEqual(sim.gate("cv", self.LONG_JD)["action"], "pass")
+
+    def test_short_jd_skips(self):
+        sim = ss.ScreenerSimulator(self._ai(0), {"screener": {"gate": "block"}})
+        g = sim.gate("cv", "one-liner")
+        self.assertEqual(g["action"], "skip")   # never blocks on unscoreable input
+
+    def test_no_ai_skips(self):
+        sim = ss.ScreenerSimulator(None, {"screener": {"gate": "block"}})
+        self.assertEqual(sim.gate("cv", self.LONG_JD)["action"], "skip")
+
+    def test_pass_at_threshold(self):
+        sim = ss.ScreenerSimulator(self._ai(30), {"screener": {"pass_score": 30}})
+        g = sim.gate("cv", self.LONG_JD)
+        self.assertEqual(g["action"], "pass")
+        self.assertEqual(g["final"], 30)
+
+    def test_warn_mode_below_threshold(self):
+        sim = ss.ScreenerSimulator(self._ai(10),
+                                   {"screener": {"pass_score": 65, "gate": "warn"}})
+        self.assertEqual(sim.gate("cv", self.LONG_JD)["action"], "warn")
+
+    def test_block_mode_below_threshold(self):
+        sim = ss.ScreenerSimulator(self._ai(10),
+                                   {"screener": {"pass_score": 65, "gate": "block"}})
+        g = sim.gate("cv", self.LONG_JD)
+        self.assertEqual(g["action"], "block")
+        self.assertIn("10 < 65", g["reason"])
+
+    def test_garbage_ai_skips_not_blocks(self):
+        ai = MagicMock()
+        ai.enabled = True
+        ai.generate.return_value = "not json"
+        sim = ss.ScreenerSimulator(ai, {"screener": {"gate": "block"}})
+        self.assertEqual(sim.gate("cv", self.LONG_JD)["action"], "skip")
+
+
 class TestGitHubEnrich(unittest.TestCase):
     def _repo(self, **kw):
         base = {"name": "x", "html_url": "https://github.com/u/x", "fork": False,

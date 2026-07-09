@@ -73,6 +73,11 @@ except ImportError:
     ApplicationDocsGenerator = None
 
 try:
+    from screener_sim import ScreenerSimulator
+except ImportError:
+    ScreenerSimulator = None
+
+try:
     from recruiter_messenger import RecruiterMessenger
 except ImportError:
     RecruiterMessenger = None
@@ -398,7 +403,8 @@ def process_page(drv, cfg: dict, st: State, sched: dict,
                  cycle_seen_ids: set = None,
                  scorer=None, tailor=None, ext_applier=None,
                  messenger=None, alert_mgr=None, salary_eng=None,
-                 prep_gen=None, scheduler=None, latex_docs_gen=None) -> dict:
+                 prep_gen=None, scheduler=None, latex_docs_gen=None,
+                 screener=None) -> dict:
     """Process all job cards on the current search results page."""
     result = {"applied": 0, "skipped": 0, "failed": 0}
     log = logging.getLogger("lla")
@@ -609,6 +615,23 @@ def process_page(drv, cfg: dict, st: State, sched: dict,
                 resume_version = os.path.basename(tailored_resume)
                 log.info(f"   📄 Tailored resume: {resume_version}")
 
+        # SCREENER GATE — simulate the employer-side AI screen before applying
+        # (opt in: screener.gate_in_run; costs one LLM call per job).
+        if screener and screener.enabled and screener.gate_in_run:
+            try:
+                g = screener.gate(cfg.get("ai", {}).get("cv_text", ""), desc)
+                if g["action"] == "block":
+                    log.info(f"   🛡️  Screener gate: {g['reason']} — skipping")
+                    st.mark_skipped(job_id, title, company, location,
+                                   f"screener gate: {g['reason']}", visa_status, "",
+                                   search_term, search_location, match_score=match_score)
+                    result["skipped"] += 1
+                    continue
+                if g["action"] == "warn":
+                    log.info(f"   🛡️  Screener warns: {g['reason']} (submitting anyway)")
+            except Exception as e:
+                log.debug(f"   screener gate failed: {e}")
+
         # Determine resume path for this application
         active_resume = tailored_resume or resume_path
 
@@ -738,7 +761,7 @@ def run_cycle(drv, cfg: dict, st: State, ai=None,
               scorer=None, tailor=None, ext_applier=None,
               messenger=None, alert_mgr=None, salary_eng=None,
               prep_gen=None, scheduler=None, google_scraper=None,
-              careers=None, latex_docs_gen=None):
+              careers=None, latex_docs_gen=None, screener=None):
     log = logging.getLogger("lla")
     sc = cfg.get("search", {})
     sched = cfg.get("scheduling", {})
@@ -855,7 +878,8 @@ def run_cycle(drv, cfg: dict, st: State, ai=None,
                                     ext_applier=ext_applier,
                                     messenger=messenger, alert_mgr=alert_mgr,
                                     salary_eng=salary_eng, prep_gen=prep_gen,
-                                    scheduler=scheduler, latex_docs_gen=latex_docs_gen)
+                                    scheduler=scheduler, latex_docs_gen=latex_docs_gen,
+                                    screener=screener)
                     tot_a += r["applied"]; tot_s += r["skipped"]; tot_f += r["failed"]
                     log.info(f"   Page: +{r['applied']}A +{r['skipped']}S +{r['failed']}F | Unique seen: {len(cycle_seen_ids)}")
                     break
@@ -935,6 +959,7 @@ def run_forever(config_path: str, run_once: bool = False):
     scorer = MatchScorer(ai_answerer, cfg) if MatchScorer else None
     tailor = ResumeTailor(ai_answerer, cfg) if ResumeTailor else None
     latex_docs_gen = ApplicationDocsGenerator(ai_answerer, cfg) if ApplicationDocsGenerator else None
+    screener = ScreenerSimulator(ai_answerer, cfg) if ScreenerSimulator else None
     ext_applier = ExternalApplier(ai_answerer, cfg) if ExternalApplier else None
     messenger = RecruiterMessenger(ai_answerer, cfg, state) if RecruiterMessenger else None
     alert_mgr = AlertManager(cfg) if AlertManager else None
@@ -1016,6 +1041,8 @@ def run_forever(config_path: str, run_once: bool = False):
     if scorer and scorer.enabled: features.append(f"Match Scoring (min: {scorer.minimum_score}%)")
     if tailor and tailor.enabled: features.append("Resume Tailoring")
     if ext_applier and ext_applier.enabled: features.append("External ATS Apply")
+    if screener and screener.enabled and screener.gate_in_run:
+        features.append(f"Screener Gate ({screener.gate_mode} < {screener.pass_score})")
     if messenger and messenger.enabled: features.append(f"Recruiter Messaging ({messenger.delay_minutes}min delay)")
     if alert_mgr and alert_mgr.enabled: features.append("Alerts")
     if salary_eng and salary_eng.enabled: features.append("Salary Intelligence")
@@ -1108,6 +1135,7 @@ def run_forever(config_path: str, run_once: bool = False):
             if messenger: messenger.__init__(ai_answerer, cfg, state)
             if ext_applier: ext_applier.__init__(ai_answerer, cfg)
             if latex_docs_gen: latex_docs_gen.__init__(ai_answerer, cfg)
+            if screener: screener.__init__(ai_answerer, cfg)
         except Exception as e:
             log.warning(f"Config reload failed: {e}")
 
@@ -1157,7 +1185,7 @@ def run_forever(config_path: str, run_once: bool = False):
                      alert_mgr=alert_mgr, salary_eng=salary_eng,
                      prep_gen=prep_gen, scheduler=scheduler,
                      google_scraper=google_scraper, careers=careers,
-                     latex_docs_gen=latex_docs_gen)
+                     latex_docs_gen=latex_docs_gen, screener=screener)
             errors = 0
         except Exception as e:
             errors += 1

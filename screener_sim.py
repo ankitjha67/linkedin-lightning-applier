@@ -204,6 +204,41 @@ class ScreenerSimulator:
         sc = self.cfg.get("screener", {})
         self.enabled = sc.get("enabled", True)
         self.pass_score = sc.get("pass_score", 65)
+        #: "off" | "warn" | "block" — how gate() treats a below-threshold score
+        self.gate_mode = sc.get("gate", "warn")
+        #: run the gate inside the autonomous loop too (one LLM call per job)
+        self.gate_in_run = sc.get("gate_in_run", False)
+
+    def gate(self, resume_text: str, jd_text: str, rubric: str = "") -> dict:
+        """Pre-submit gate shared by `lla docs`, the loop, and the batch applier.
+
+        Returns {action, final, threshold, reason, result} where action is:
+          "pass"  — scored at/above threshold, or gating is off
+          "warn"  — below threshold but gate mode is "warn" (submit anyway)
+          "block" — below threshold and gate mode is "block" (skip the submit)
+          "skip"  — could not score (no AI / no usable JD); never blocks
+        """
+        base = {"final": None, "threshold": self.pass_score, "result": None}
+        if not self.enabled or self.gate_mode == "off":
+            return {**base, "action": "pass", "reason": "screener gate off"}
+        # A one-line description can't support a meaningful rubric evaluation.
+        if not jd_text or len(jd_text.strip()) < 200:
+            return {**base, "action": "skip", "reason": "job description too short to score"}
+        if not (self.ai and getattr(self.ai, "enabled", False)):
+            return {**base, "action": "skip", "reason": "AI unavailable"}
+
+        result = self.simulate(resume_text, jd_text, rubric)
+        base["result"] = result
+        if not result["ai_used"] or not result["total"]:
+            return {**base, "action": "skip", "reason": "screener evaluation failed"}
+        final = result["total"]["final"]
+        base["final"] = final
+        if final >= self.pass_score:
+            return {**base, "action": "pass",
+                    "reason": f"screener {final} >= {self.pass_score}"}
+        action = "block" if self.gate_mode == "block" else "warn"
+        return {**base, "action": action,
+                "reason": f"screener {final} < {self.pass_score}"}
 
     def simulate(self, resume_text: str, jd_text: str, rubric: str = "") -> dict:
         """Full simulation: lint + (with AI) rubric evaluation + ledger total.

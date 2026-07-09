@@ -229,6 +229,24 @@ def cmd_docs(args):
     else:
         print(f"\n  {_color('Honesty check: all claims supported by profile.', 'green')}")
 
+    # Employer-side screener gate on the tailored application
+    from screener_sim import ScreenerSimulator
+    sim = ScreenerSimulator(ai, cfg)
+    g = sim.gate(cfg.get("ai", {}).get("cv_text", ""), jd)
+    if g["action"] == "skip":
+        print(f"\n  Screener    : not scored ({g['reason']})")
+    elif g["final"] is not None:
+        color = "green" if g["action"] == "pass" else "red"
+        verdict = {"pass": "LIKELY PASS", "warn": "AT RISK", "block": "BLOCKED"}[g["action"]]
+        print(f"\n  Screener    : {_color(verdict, color)}  ({g['reason']}; max 120)")
+        ev = (g["result"] or {}).get("evaluation") or {}
+        for a in (ev.get("areas_for_improvement") or [])[:3]:
+            print(f"    ✗ {a}")
+        if g["action"] == "block":
+            print(f"\n  {_color('Screener gate is set to block — fix the issues above, or', 'red')}")
+            print(f"  {_color('lower screener.pass_score / set screener.gate: warn to override.', 'red')}")
+            sys.exit(2)
+
 
 def cmd_screen(args):
     """Simulate the employer-side AI screen on your resume for a specific JD.

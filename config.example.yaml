@@ -559,6 +559,11 @@ latex_docs:
 screener:
   enabled: true
   pass_score: 65                 # final ledger score (max 120) treated as "likely pass"
+  gate: "warn"                   # off | warn | block — what a below-threshold score does
+                                 # to submissions in `lla docs` and `lla apply` (batch).
+                                 # Jobs without a substantial description are never gated.
+  gate_in_run: false             # also gate the autonomous loop (`lla run`) — one extra
+                                 # LLM call per job; blocked jobs are marked skipped.
   # Use via:  lla screen --jd-file jd.txt [--resume-file cv.pdf] [--github you]
 
 # ═══════════════════════════════════════════════════════════════

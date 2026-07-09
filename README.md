@@ -277,10 +277,10 @@ tools_layer.py          Protocol-agnostic tool layer (MCP/adapter foundation)
 careers_scanner.py      Curated company careers-page scanner (Greenhouse/Lever/Ashby)
 companies.json          Curated target-company database (30+ companies)
 pyproject.toml          PyPI packaging — `pip install` + `lla` CLI entry point
-tests/                  308 unit + integration tests
+tests/                  315 unit + integration tests
 ```
 
-32,240 lines across 95 Python files and 55 features. Includes 308 unit tests.
+32,240 lines across 95 Python files and 55 features. Includes 315 unit tests.
 
 ## AI Providers
 
@@ -437,6 +437,14 @@ Three layers:
   your profile caps the open-source category, and ranks which projects to
   feature for *this* posting.
 
+**Pre-submit gate.** The same simulation gates every submit path. Set
+`screener.gate` to `warn` (default — log and submit anyway) or `block`:
+`lla docs` prints the verdict (and exits non-zero on block), the batch
+`lla apply` skips blocked rows, and with `screener.gate_in_run: true` the
+autonomous loop skips below-threshold jobs (marked in the DB with the reason).
+Fail-open by design — a job with no substantial description, an unavailable AI,
+or an unparseable evaluation is never blocked.
+
 ## Careers-Page Scanner
 
 A targeted, company-first discovery mode that complements LinkedIn/Google search. Scans a curated `companies.json` (30+ companies, extensible) via **free** ATS JSON APIs (Greenhouse, Lever, Ashby) with HTML-scraping fallback — no paid API needed. Enable with `careers_scanner.enabled: true`. Scores every role with your match scorer and surfaces the top matches.
@@ -521,7 +529,7 @@ Extension points: ATS handlers, job platforms, resume templates, role archetypes
 ## Testing
 
 ```bash
-# Run all 308 tests
+# Run all 315 tests
 python -m unittest discover -s tests -v
 
 # Run specific test module
