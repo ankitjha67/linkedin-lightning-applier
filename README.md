@@ -277,10 +277,10 @@ tools_layer.py          Protocol-agnostic tool layer (MCP/adapter foundation)
 careers_scanner.py      Curated company careers-page scanner (Greenhouse/Lever/Ashby)
 companies.json          Curated target-company database (30+ companies)
 pyproject.toml          PyPI packaging — `pip install` + `lla` CLI entry point
-tests/                  285 unit + integration tests
+tests/                  308 unit + integration tests
 ```
 
-32,240 lines across 95 Python files and 55 features. Includes 285 unit tests.
+32,240 lines across 95 Python files and 55 features. Includes 308 unit tests.
 
 ## AI Providers
 
@@ -411,6 +411,32 @@ autonomous bot and the batch `lla apply` submitter.
 
 _Document-quality approach inspired by [MadsLorentzen/ai-job-search](https://github.com/MadsLorentzen/ai-job-search) (MIT), reworked as testable Python modules._
 
+## Screener Simulator (see your resume through the employer's AI)
+
+Companies increasingly screen resumes with AI before a human ever reads them.
+`lla screen` runs that screen on **your** resume for a specific posting — rubric
+adapted from [HackerRank's open-source hiring-agent](https://github.com/interviewstreet/hiring-agent) (MIT), inverted to the candidate side:
+
+```bash
+lla screen --jd-file jd.txt                          # uses ai.cv_text from config
+lla screen --jd-file jd.txt --resume-file cv.pdf     # or a specific file
+lla screen --jd-file jd.txt --github your-username   # + GitHub signal analysis
+```
+
+Three layers:
+- **Hygiene lint (no AI needed)** — the exact deductions screeners apply:
+  projects/roles without links (−30-50%), unquantified bullets, generic project
+  names, missing literal contact details.
+- **Rubric evaluation (with AI)** — role-aware category scores with hard caps
+  (engineering: open-source/self-projects/production/skills; professional:
+  experience/domain/impact/tools), evidence per category, a bonus/deduction
+  ledger capped exactly like the employer side, key strengths, and areas for
+  improvement. Fairness rules preserved: never scores name, school, grades, or location.
+- **GitHub signal** (`--github`) — classifies your repos the way the screener
+  does (true open-source contributions vs. personal repos vs. forks), warns when
+  your profile caps the open-source category, and ranks which projects to
+  feature for *this* posting.
+
 ## Careers-Page Scanner
 
 A targeted, company-first discovery mode that complements LinkedIn/Google search. Scans a curated `companies.json` (30+ companies, extensible) via **free** ATS JSON APIs (Greenhouse, Lever, Ashby) with HTML-scraping fallback — no paid API needed. Enable with `careers_scanner.enabled: true`. Scores every role with your match scorer and surfaces the top matches.
@@ -495,7 +521,7 @@ Extension points: ATS handlers, job platforms, resume templates, role archetypes
 ## Testing
 
 ```bash
-# Run all 285 tests
+# Run all 308 tests
 python -m unittest discover -s tests -v
 
 # Run specific test module

@@ -553,6 +553,15 @@ latex_docs:
   # package if installed; otherwise it checks the plain-text content.
 
 # ═══════════════════════════════════════════════════════════════
+# SCREENER SIMULATOR — score your resume the way the employer's AI will
+# (rubric adapted from HackerRank's open-source hiring-agent)
+# ═══════════════════════════════════════════════════════════════
+screener:
+  enabled: true
+  pass_score: 65                 # final ledger score (max 120) treated as "likely pass"
+  # Use via:  lla screen --jd-file jd.txt [--resume-file cv.pdf] [--github you]
+
+# ═══════════════════════════════════════════════════════════════
 # SKILL GAP ANALYSIS — Aggregate skills, identify gaps
 # ═══════════════════════════════════════════════════════════════
 skill_gap_analysis:

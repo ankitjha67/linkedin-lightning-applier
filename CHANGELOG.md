@@ -3,6 +3,21 @@
 ## Unreleased
 
 ### Added
+- **Screener Simulator** (`screener_sim.py` + `lla screen`) — see your resume
+  through the employer's AI screen before submitting. Rubric adapted from
+  HackerRank's open-source hiring-agent (interviewstreet/hiring-agent, MIT),
+  inverted to the candidate side: deterministic hygiene lint (missing links,
+  unquantified bullets, generic project names, missing contact text), role-aware
+  rubric evaluation (engineering vs professional category sets) with hard caps,
+  evidence, a clamped bonus/deduction ledger (bonus ≤ 20, final ∈ [−20, 120]),
+  key strengths and areas for improvement. Fairness rules preserved verbatim
+  (never scores name/school/grades/location). Degrades to lint-only without AI.
+- **GitHub signal enrichment** (`github_enrich.py`) — classify your repos the
+  way screeners do (true open-source vs self-project vs fork), warn when the
+  profile caps the open-source category (~10/35), and rank the top projects to
+  feature per posting (stars, docs, live demo, recency, JD language/topic
+  relevance). Public GitHub API, `GITHUB_TOKEN` optional, fails soft.
+- +23 tests (`tests/test_screener_sim.py`). Suite 285 → 308.
 - **Professional application-document pipeline** (inspired by
   MadsLorentzen/ai-job-search, adapted to this repo's Python architecture):
   - **`latex_docs.py`** — typeset **moderncv** CV + cover letter. Pure-function

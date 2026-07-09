@@ -230,6 +230,78 @@ def cmd_docs(args):
         print(f"\n  {_color('Honesty check: all claims supported by profile.', 'green')}")
 
 
+def cmd_screen(args):
+    """Simulate the employer-side AI screen on your resume for a specific JD.
+
+    Runs the deterministic hygiene lint always; adds the rubric evaluation
+    (category scores + evidence + bonus/deduction ledger) when AI is available.
+    Optionally enriches with your GitHub signal.
+    """
+    _print_banner("Screener Simulator (employer-side view)")
+    cfg = _load_config(args.config)
+
+    jd = args.jd or ""
+    if args.jd_file:
+        jd = Path(args.jd_file).read_text(encoding="utf-8")
+    resume_text = ""
+    if args.resume_file:
+        from profile_setup import read_file_text
+        resume_text = read_file_text(args.resume_file)
+    if not resume_text:
+        resume_text = cfg.get("ai", {}).get("cv_text", "")
+    if not resume_text:
+        print("  No resume text: pass --resume-file or set ai.cv_text in config.")
+        return
+
+    from screener_sim import ScreenerSimulator, pick_rubric
+    ai = _init_ai(cfg)
+    sim = ScreenerSimulator(ai, cfg)
+    rubric = args.rubric or pick_rubric(jd)
+    res = sim.simulate(resume_text, jd, rubric)
+
+    print(f"  Rubric      : {res['rubric']}")
+    lint = res["lint"]
+    print(f"  Hygiene     : {len(lint['issues'])} issue(s)  "
+          f"({lint['stats']['bullets']} bullets, {lint['stats']['urls']} links, "
+          f"{lint['stats']['words']} words)")
+    for issue in lint["issues"]:
+        print(f"    ⚠ {issue}")
+
+    if res["ai_used"] and res["total"]:
+        t = res["total"]
+        print(f"\n  Screener score: {_color(str(t['final']), 'bold')} / {t['max_possible']}"
+              f"  →  {_color('LIKELY PASS' if res['passed'] else 'AT RISK', 'green' if res['passed'] else 'red')}"
+              f"  (threshold {sim.pass_score})")
+        for cat, c in t["categories"].items():
+            print(f"    {cat:22} {c['score']:>3}/{c['max']:<3} {c['evidence'][:70]}")
+        print(f"    {'bonus':22} +{t['bonus']}   {'deductions':12} -{t['deductions']}")
+        ev = res["evaluation"] or {}
+        for s in (ev.get("key_strengths") or [])[:5]:
+            print(f"    ✓ {s}")
+        for a in (ev.get("areas_for_improvement") or [])[:3]:
+            print(f"    ✗ {a}")
+    else:
+        print("\n  (AI unavailable — hygiene lint only. Configure a provider for the "
+              "full rubric evaluation.)")
+
+    if args.github:
+        from github_enrich import extract_username, fetch_repos, github_signal_summary, rank_projects
+        username = extract_username(args.github)
+        repos = fetch_repos(username)
+        sig = github_signal_summary(repos)
+        print(f"\n  GitHub signal ({username}): {sig['repos']} repos, "
+              f"{sig['open_source']} open-source, {sig['self_projects']} self, "
+              f"{sig['total_stars']} stars")
+        for w in sig["warnings"]:
+            print(f"    ⚠ {w}")
+        best = rank_projects(repos, jd, top=5)
+        if best:
+            print("  Projects to feature for this posting:")
+            for p in best:
+                print(f"    {p['score']:>6.1f}  {p['name']}  [{p['type']}, "
+                      f"★{p['stars']}] {p['description'][:50]}")
+
+
 def cmd_test_llm(args):
     """Send one real prompt to the configured (or overridden) LLM and print the reply.
 
@@ -793,6 +865,7 @@ def build_parser() -> argparse.ArgumentParser:
               lla apply --file urls.txt        Batch-apply from a file
               lla apply --file urls.txt --dry-run   Preview ATS detection
               lla docs --jd-file jd.txt --title "Risk Manager" --company "Monzo"
+              lla screen --jd-file jd.txt      Employer-side AI screen simulation
               lla test-llm                     Verify your configured LLM works
               lla test-llm --provider openrouter --model nvidia/nemotron-3-super-120b-a12b:free
               lla stats                        Show statistics
@@ -820,6 +893,16 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--company", help="Company name")
     p.add_argument("--min-coverage", dest="min_coverage", type=int, default=60,
                    help="Min ATS keyword-coverage %% to pass (default 60)")
+
+    # --- screen ---
+    p = subs.add_parser("screen", help="Simulate the employer-side AI resume screen for a JD")
+    p.add_argument("--jd", help="Job description text")
+    p.add_argument("--jd-file", dest="jd_file", help="Path to a file with the job description")
+    p.add_argument("--resume-file", dest="resume_file",
+                   help="Resume file (.txt/.md/.tex/.pdf); defaults to ai.cv_text from config")
+    p.add_argument("--rubric", choices=["engineering", "professional"],
+                   help="Rubric profile (default: auto-detect from the JD)")
+    p.add_argument("--github", help="Your GitHub URL/username for signal analysis")
 
     # --- test-llm ---
     p = subs.add_parser("test-llm", help="Send one prompt to the configured LLM to verify it works")
@@ -947,6 +1030,7 @@ COMMAND_MAP = {
     "run": cmd_run,
     "apply": cmd_apply,
     "docs": cmd_docs,
+    "screen": cmd_screen,
     "test-llm": cmd_test_llm,
     "evaluate": cmd_evaluate,
     "score": cmd_score,
