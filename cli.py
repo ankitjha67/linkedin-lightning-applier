@@ -156,6 +156,273 @@ def cmd_run(args):
         main.main()
 
 
+def _probe_llm(ai, prompt: str) -> str:
+    """One low-level LLM call that SURFACES errors.
+
+    AIAnswerer.generate() deliberately swallows failures and returns "" so the
+    bot degrades gracefully. For a connectivity test we want the real exception
+    (bad model id, 404, auth error) instead of a silent empty string. For the
+    OpenAI-compatible providers we hit the client directly; the two special
+    backends (Claude CLI subprocess, Anthropic native SDK) fall back to generate().
+    """
+    if ai.provider == "claude_cli" or (
+            ai.provider == "anthropic" and getattr(ai, "_use_anthropic", False)):
+        return ai.generate(prompt)
+    if ai.client is None:
+        raise RuntimeError(
+            "LLM client could not be created. For OpenAI-compatible providers "
+            "(openrouter/gemini/ollama/lmstudio/openai/groq/...) install the SDK: "
+            "pip install openai")
+    resp = ai.client.chat.completions.create(
+        model=ai.model,
+        messages=[{"role": "user", "content": prompt}],
+        max_tokens=64,
+    )
+    return (resp.choices[0].message.content or "").strip()
+
+
+def cmd_docs(args):
+    """Generate a tailored LaTeX CV + cover letter for a job, with ATS + review checks.
+
+    Ties together latex_docs (typeset PDFs), ats_pdf_check (keyword coverage +
+    parseability), and doc_reviewer (drafter-reviewer critique + honesty check).
+    Compiles to PDF if a LaTeX engine is installed; otherwise writes .tex.
+    """
+    _print_banner("Tailored Application Documents")
+    cfg = _load_config(args.config)
+    ai = _init_ai(cfg)
+
+    jd = args.jd or ""
+    if args.jd_file:
+        jd = Path(args.jd_file).read_text(encoding="utf-8")
+    if not jd:
+        print("  Provide a job description with --jd '...' or --jd-file path.txt")
+        return
+    title, company = args.title or "the role", args.company or "the company"
+
+    from application_docs import ApplicationDocsGenerator
+    gen = ApplicationDocsGenerator(ai, cfg)
+    gen.min_coverage = args.min_coverage
+    res = gen.generate(title, company, jd)
+    report = res["ats"]
+
+    print(f"  Engine     : {res['engine'] or 'none (wrote .tex only — install TeX Live to compile)'}")
+    print(f"  CV         : {res['cv_tex']}" + (f"  →  {res['cv_pdf']}" if res.get('cv_pdf') else ""))
+    print(f"  Cover      : {res['cover_tex']}" + (f"  →  {res['cover_pdf']}" if res.get('cover_pdf') else ""))
+    print()
+    color = "green" if report["passed"] else "yellow"
+    print(f"  ATS check  : {_color(('PASS' if report['passed'] else 'REVIEW'), color)}  "
+          f"(keyword coverage {report['coverage_pct']}%, min {report['min_coverage']}%)")
+    if report["missing_keywords"]:
+        print(f"    Missing keywords: {', '.join(report['missing_keywords'][:12])}")
+    for issue in report["issues"]:
+        print(f"    ⚠ {issue}")
+    if res["critique"]:
+        print("\n  Reviewer critique (cover letter):")
+        for line in res["critique"].splitlines()[:8]:
+            if line.strip():
+                print(f"    {line.strip()}")
+    if res["honesty_flags"]:
+        print(f"\n  {_color('Honesty check flagged claims to verify:', 'red')}")
+        for f in res["honesty_flags"]:
+            print(f"    • {f}")
+    else:
+        print(f"\n  {_color('Honesty check: all claims supported by profile.', 'green')}")
+
+    # Employer-side screener gate on the tailored application
+    from screener_sim import ScreenerSimulator
+    sim = ScreenerSimulator(ai, cfg)
+    g = sim.gate(cfg.get("ai", {}).get("cv_text", ""), jd)
+    if g["action"] == "skip":
+        print(f"\n  Screener    : not scored ({g['reason']})")
+    elif g["final"] is not None:
+        color = "green" if g["action"] == "pass" else "red"
+        verdict = {"pass": "LIKELY PASS", "warn": "AT RISK", "block": "BLOCKED"}[g["action"]]
+        print(f"\n  Screener    : {_color(verdict, color)}  ({g['reason']}; max 120)")
+        ev = (g["result"] or {}).get("evaluation") or {}
+        for a in (ev.get("areas_for_improvement") or [])[:3]:
+            print(f"    ✗ {a}")
+        if g["action"] == "block":
+            print(f"\n  {_color('Screener gate is set to block — fix the issues above, or', 'red')}")
+            print(f"  {_color('lower screener.pass_score / set screener.gate: warn to override.', 'red')}")
+            sys.exit(2)
+
+
+def cmd_screen(args):
+    """Simulate the employer-side AI screen on your resume for a specific JD.
+
+    Runs the deterministic hygiene lint always; adds the rubric evaluation
+    (category scores + evidence + bonus/deduction ledger) when AI is available.
+    Optionally enriches with your GitHub signal.
+    """
+    _print_banner("Screener Simulator (employer-side view)")
+    cfg = _load_config(args.config)
+
+    jd = args.jd or ""
+    if args.jd_file:
+        jd = Path(args.jd_file).read_text(encoding="utf-8")
+    resume_text = ""
+    if args.resume_file:
+        from profile_setup import read_file_text
+        resume_text = read_file_text(args.resume_file)
+    if not resume_text:
+        resume_text = cfg.get("ai", {}).get("cv_text", "")
+    if not resume_text:
+        print("  No resume text: pass --resume-file or set ai.cv_text in config.")
+        return
+
+    from screener_sim import ScreenerSimulator, pick_rubric
+    ai = _init_ai(cfg)
+    sim = ScreenerSimulator(ai, cfg)
+    rubric = args.rubric or pick_rubric(jd)
+    res = sim.simulate(resume_text, jd, rubric)
+
+    print(f"  Rubric      : {res['rubric']}")
+    lint = res["lint"]
+    print(f"  Hygiene     : {len(lint['issues'])} issue(s)  "
+          f"({lint['stats']['bullets']} bullets, {lint['stats']['urls']} links, "
+          f"{lint['stats']['words']} words)")
+    for issue in lint["issues"]:
+        print(f"    ⚠ {issue}")
+
+    if res["ai_used"] and res["total"]:
+        t = res["total"]
+        print(f"\n  Screener score: {_color(str(t['final']), 'bold')} / {t['max_possible']}"
+              f"  →  {_color('LIKELY PASS' if res['passed'] else 'AT RISK', 'green' if res['passed'] else 'red')}"
+              f"  (threshold {sim.pass_score})")
+        for cat, c in t["categories"].items():
+            print(f"    {cat:22} {c['score']:>3}/{c['max']:<3} {c['evidence'][:70]}")
+        print(f"    {'bonus':22} +{t['bonus']}   {'deductions':12} -{t['deductions']}")
+        ev = res["evaluation"] or {}
+        for s in (ev.get("key_strengths") or [])[:5]:
+            print(f"    ✓ {s}")
+        for a in (ev.get("areas_for_improvement") or [])[:3]:
+            print(f"    ✗ {a}")
+    else:
+        print("\n  (AI unavailable — hygiene lint only. Configure a provider for the "
+              "full rubric evaluation.)")
+
+    if args.github:
+        from github_enrich import extract_username, fetch_repos, github_signal_summary, rank_projects
+        username = extract_username(args.github)
+        repos = fetch_repos(username)
+        sig = github_signal_summary(repos)
+        print(f"\n  GitHub signal ({username}): {sig['repos']} repos, "
+              f"{sig['open_source']} open-source, {sig['self_projects']} self, "
+              f"{sig['total_stars']} stars")
+        for w in sig["warnings"]:
+            print(f"    ⚠ {w}")
+        best = rank_projects(repos, jd, top=5)
+        if best:
+            print("  Projects to feature for this posting:")
+            for p in best:
+                print(f"    {p['score']:>6.1f}  {p['name']}  [{p['type']}, "
+                      f"★{p['stars']}] {p['description'][:50]}")
+
+
+def cmd_test_llm(args):
+    """Send one real prompt to the configured (or overridden) LLM and print the reply.
+
+    Verifies end-to-end connectivity for ANY provider — cloud (OpenAI, Anthropic,
+    Gemini, Groq, DeepSeek, OpenRouter, Claude CLI) or local (Ollama, LM Studio) —
+    before you rely on it for form answers. Override the provider/model on the fly
+    with --provider/--model so you can try a model without editing config.
+
+    A model that returns empty text (e.g. a reranker or embedding model) is
+    flagged as unusable for generation.
+    """
+    _print_banner("LLM Connectivity Test")
+    cfg = _load_config(args.config)
+    ai_cfg = cfg.setdefault("ai", {})
+    ai_cfg["enabled"] = True
+    if args.provider:
+        ai_cfg["provider"] = args.provider
+        # A bare provider override shouldn't inherit an unrelated model from config.
+        if not args.model:
+            ai_cfg["model"] = ""
+    if args.model:
+        ai_cfg["model"] = args.model
+    if args.base_url:
+        ai_cfg["base_url"] = args.base_url
+    if args.api_key:
+        ai_cfg["api_key"] = args.api_key
+
+    ai = _init_ai(cfg)
+    if ai is None or not getattr(ai, "enabled", False):
+        print(f"  {_color('AI is disabled or failed to initialize.', 'red')}")
+        sys.exit(1)
+
+    print(f"  Provider : {ai.provider}")
+    print(f"  Model    : {ai.model or '(provider default)'}")
+    print(f"  Base URL : {ai.base_url or '(native SDK)'}")
+    print(f"  API key  : {'set' if ai.api_key else '(none — ok for local / claude_cli)'}")
+
+    prompt = args.prompt or "Reply with exactly the word: OK"
+    print(f"\n  Prompt   : {prompt}")
+    import time as _time
+    t0 = _time.time()
+    try:
+        reply = _probe_llm(ai, prompt)
+    except Exception as exc:
+        print(f"\n  {_color('FAILED', 'red')}: {exc}")
+        print("  Check the model id, api key, and base_url. For OpenRouter, confirm the")
+        print("  model exists at https://openrouter.ai/models and is a chat (not rerank) model.")
+        sys.exit(1)
+    dt = _time.time() - t0
+
+    if reply and reply.strip():
+        print(f"  Reply    : {_color(reply.strip()[:500], 'green')}")
+        print(f"  Latency  : {dt:.1f}s")
+        print(f"\n  {_color('LLM is working — usable for form answers.', 'green')}")
+    else:
+        print(f"  Reply    : {_color('(empty)', 'yellow')}")
+        print(f"\n  {_color('Reachable but returned no text.', 'yellow')} If this is a rerank or "
+              "embedding\n  model, it cannot generate answers — pick a chat/completion model instead.")
+        sys.exit(1)
+
+
+def cmd_apply(args):
+    """Submit applications to external ATS forms from a list of apply URLs.
+
+    The "last mile": hand it apply links (from Indeed, Google Jobs, a careers
+    page, or a spreadsheet) and it drives a real browser through each ATS form
+    and submits — no LinkedIn required. Supports all 12 ATS platforms.
+    """
+    _print_banner("External Batch Apply")
+    from apply_urls import BatchApplier, load_jobs
+    from ats_handlers import detect_ats
+
+    jobs = load_jobs(args.urls, args.file)
+    if not jobs:
+        print("  No valid URLs provided. Pass URLs or --file <path>.")
+        return
+
+    if args.dry_run:
+        supported = 0
+        headers = ["ATS", "Status", "URL"]
+        rows = []
+        for j in jobs:
+            ats = detect_ats(j["url"])
+            status = "ready" if ats else "unsupported"
+            if ats:
+                supported += 1
+            rows.append([ats or "—", status, j["url"][:55]])
+        _print_table(headers, rows)
+        print(f"\n  {supported}/{len(jobs)} ready to apply. "
+              f"(dry run — nothing submitted)")
+        return
+
+    cfg = _load_config(args.config)
+    runner = BatchApplier(cfg, resume_path=args.resume or "",
+                          headless=args.headless or None,
+                          max_apply=args.max_apply, force=args.force)
+    ok, fail, skip = runner.run(jobs)
+    print(f"\n  Done: {_color(str(ok)+' submitted', 'green')}   "
+          f"{_color(str(fail)+' failed', 'red')}   {skip} skipped")
+    if fail:
+        sys.exit(1)
+
+
 def cmd_evaluate(args):
     """Run a structured A-F evaluation for a specific job."""
     _print_banner("Job Evaluation")
@@ -612,6 +879,13 @@ def build_parser() -> argparse.ArgumentParser:
         epilog=textwrap.dedent("""\
             Examples:
               lla run                          Start the bot
+              lla apply URL [URL ...]          Submit external ATS applications
+              lla apply --file urls.txt        Batch-apply from a file
+              lla apply --file urls.txt --dry-run   Preview ATS detection
+              lla docs --jd-file jd.txt --title "Risk Manager" --company "Monzo"
+              lla screen --jd-file jd.txt      Employer-side AI screen simulation
+              lla test-llm                     Verify your configured LLM works
+              lla test-llm --provider openrouter --model nvidia/nemotron-3-super-120b-a12b:free
               lla stats                        Show statistics
               lla validate-config              Check config.yaml
               lla skill-gaps                   Skill gap report
@@ -628,6 +902,44 @@ def build_parser() -> argparse.ArgumentParser:
 
     # --- run ---
     subs.add_parser("run", help="Start the main bot")
+
+    # --- docs ---
+    p = subs.add_parser("docs", help="Generate tailored LaTeX CV + cover letter (ATS + review checks)")
+    p.add_argument("--jd", help="Job description text")
+    p.add_argument("--jd-file", dest="jd_file", help="Path to a file with the job description")
+    p.add_argument("--title", help="Job title")
+    p.add_argument("--company", help="Company name")
+    p.add_argument("--min-coverage", dest="min_coverage", type=int, default=60,
+                   help="Min ATS keyword-coverage %% to pass (default 60)")
+
+    # --- screen ---
+    p = subs.add_parser("screen", help="Simulate the employer-side AI resume screen for a JD")
+    p.add_argument("--jd", help="Job description text")
+    p.add_argument("--jd-file", dest="jd_file", help="Path to a file with the job description")
+    p.add_argument("--resume-file", dest="resume_file",
+                   help="Resume file (.txt/.md/.tex/.pdf); defaults to ai.cv_text from config")
+    p.add_argument("--rubric", choices=["engineering", "professional"],
+                   help="Rubric profile (default: auto-detect from the JD)")
+    p.add_argument("--github", help="Your GitHub URL/username for signal analysis")
+
+    # --- test-llm ---
+    p = subs.add_parser("test-llm", help="Send one prompt to the configured LLM to verify it works")
+    p.add_argument("--provider", help="Override provider (openrouter, gemini, ollama, lmstudio, ...)")
+    p.add_argument("--model", help="Override model id (e.g. nvidia/nemotron-3-super-120b-a12b:free)")
+    p.add_argument("--base-url", dest="base_url", help="Override base URL (for local/self-hosted)")
+    p.add_argument("--api-key", dest="api_key", help="Override API key (else config / env var)")
+    p.add_argument("--prompt", help="Custom test prompt")
+
+    # --- apply ---
+    p = subs.add_parser("apply", help="Submit external ATS applications from apply URLs")
+    p.add_argument("urls", nargs="*", help="Apply URL(s) to submit")
+    p.add_argument("-f", "--file", help="File of URLs (.txt one-per-line, .csv, or .json)")
+    p.add_argument("-r", "--resume", help="Resume file to upload (overrides config)")
+    p.add_argument("--max", type=int, dest="max_apply", help="Max applications this run")
+    p.add_argument("--headless", action="store_true", help="Run the browser headless")
+    p.add_argument("--force", action="store_true", help="Re-apply even if already applied")
+    p.add_argument("--dry-run", action="store_true",
+                   help="Detect the ATS for each URL and print a plan — no browser, no submit")
 
     # --- evaluate ---
     p = subs.add_parser("evaluate", help="Evaluate a specific job (A-F blocks)")
@@ -734,6 +1046,10 @@ def build_parser() -> argparse.ArgumentParser:
 
 COMMAND_MAP = {
     "run": cmd_run,
+    "apply": cmd_apply,
+    "docs": cmd_docs,
+    "screen": cmd_screen,
+    "test-llm": cmd_test_llm,
     "evaluate": cmd_evaluate,
     "score": cmd_score,
     "compare-offers": cmd_compare_offers,

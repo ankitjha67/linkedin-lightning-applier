@@ -4,6 +4,11 @@ logs/
 data/tailored_resumes/
 data/profiles/
 
+# User job-search lists fed to apply_urls.py / `lla apply` (personal data — never commit)
+credit_risk_jobs.csv
+*_jobs.csv
+urls.txt
+
 # Python
 __pycache__/
 *.pyc
@@ -33,3 +38,7 @@ Thumbs.db
 # Chrome profile
 chrome-lla-profile/
 .env
+
+# Personal career materials — keep folder structure + README, ignore contents
+documents/*/*
+!documents/*/.gitkeep

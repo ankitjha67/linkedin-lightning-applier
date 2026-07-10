@@ -338,17 +338,54 @@ recruiter_messaging:
   skip_if_no_profile_url: true
 
 # ═══════════════════════════════════════════════════════════════
-# EXTERNAL APPLY — Fill ATS forms (Greenhouse, Lever, Workday)
+# EXTERNAL APPLY — Fill ATS forms on 12 platforms
 # ═══════════════════════════════════════════════════════════════
 external_apply:
   enabled: true
+  # Which ATS platforms to auto-apply on. Remove any you don't want.
+  # Login-gated platforms (workday, icims, taleo, successfactors, adp) need
+  # credentials under `ats_accounts` below, or they'll be skipped.
   supported_ats:
-    - "greenhouse"
-    - "lever"
-    - "workday"
-    - "ashby"
+    - "workday"          # enterprise wizard (Amazon, NVIDIA, Salesforce, ...)
+    - "greenhouse"       # boards.greenhouse.io
+    - "lever"            # jobs.lever.co
+    - "ashby"            # jobs.ashbyhq.com
+    - "smartrecruiters"  # jobs.smartrecruiters.com
+    - "workable"         # apply.workable.com
+    - "jobvite"          # jobs.jobvite.com
+    - "bamboohr"         # *.bamboohr.com
+    - "icims"            # *.icims.com (login required)
+    - "taleo"            # *.taleo.net (Oracle, login required)
+    - "successfactors"   # SAP SuccessFactors (login required)
+    - "adp"              # ADP recruiting (login required)
   max_external_per_cycle: 5
   timeout_seconds: 120
+  max_wizard_pages: 12          # safety cap on multi-step wizard loops
+  slow_mo_seconds: 0.0          # add a pause after each field (debugging)
+
+  # Credentials for ATSes that force account creation before applying.
+  # The bot reuses one email+password across every tenant of a platform:
+  # it creates the account on first visit, signs in on return visits.
+  # SECURITY: keep these in config.yaml (gitignored) — never commit real creds.
+  ats_accounts:
+    workday:
+      email: ""                 # defaults to personal.email if blank
+      password: ""              # choose a strong, unique password
+      # Optional per-tenant overrides if a company needs a different login:
+      # tenants:
+      #   nvidia.wd5.myworkdayjobs.com: { email: "you@x.com", password: "..." }
+    icims:
+      email: ""
+      password: ""
+    taleo:
+      email: ""
+      password: ""
+    successfactors:
+      email: ""
+      password: ""
+    adp:
+      email: ""
+      password: ""
 
 # ═══════════════════════════════════════════════════════════════
 # GOOGLE JOBS — Scrape Google Jobs for additional job discovery
@@ -497,6 +534,37 @@ cover_letter:
   output_dir: "data/cover_letters"
   tone: "professional"           # professional, conversational, enthusiastic
   length: "medium"               # short, medium, full
+
+# ═══════════════════════════════════════════════════════════════
+# LATEX DOCS — typeset CV + cover letter (moderncv) via `lla docs` / /apply
+# ═══════════════════════════════════════════════════════════════
+latex_docs:
+  enabled: true
+  auto_generate: false          # true = generate a LaTeX CV for every job in `lla run`
+                                # (needs a LaTeX engine installed; uses the PDF as the
+                                #  upload resume). Off by default — it's slower per job.
+  min_coverage: 60              # ATS keyword-coverage %% target for the check
+  output_dir: "data/latex_docs"
+  cv_style: "banking"            # moderncv style: banking, classic, casual, oldstyle
+  cv_color: "blue"              # moderncv color: blue, orange, green, red, purple, grey, black
+  engine: ""                    # "" = auto-detect (lualatex > xelatex > pdflatex)
+  # Compilation needs a LaTeX distribution (TeX Live / MiKTeX) with `moderncv`.
+  # The ATS text-layer check uses `pdftotext` (poppler) or the pdfminer.six
+  # package if installed; otherwise it checks the plain-text content.
+
+# ═══════════════════════════════════════════════════════════════
+# SCREENER SIMULATOR — score your resume the way the employer's AI will
+# (rubric adapted from HackerRank's open-source hiring-agent)
+# ═══════════════════════════════════════════════════════════════
+screener:
+  enabled: true
+  pass_score: 65                 # final ledger score (max 120) treated as "likely pass"
+  gate: "warn"                   # off | warn | block — what a below-threshold score does
+                                 # to submissions in `lla docs` and `lla apply` (batch).
+                                 # Jobs without a substantial description are never gated.
+  gate_in_run: false             # also gate the autonomous loop (`lla run`) — one extra
+                                 # LLM call per job; blocked jobs are marked skipped.
+  # Use via:  lla screen --jd-file jd.txt [--resume-file cv.pdf] [--github you]
 
 # ═══════════════════════════════════════════════════════════════
 # SKILL GAP ANALYSIS — Aggregate skills, identify gaps

@@ -291,16 +291,86 @@ Messages are queued with a scheduled send time. The queue is processed at the en
 ```yaml
 external_apply:
   enabled: true
-  supported_ats:
+  supported_ats:                # remove any platform you don't want
+    - "workday"                 # enterprise wizard (Amazon, NVIDIA, Salesforce…)
     - "greenhouse"
     - "lever"
-    - "workday"
     - "ashby"
+    - "smartrecruiters"
+    - "workable"
+    - "jobvite"
+    - "bamboohr"
+    - "icims"                   # login required
+    - "taleo"                   # Oracle, login required
+    - "successfactors"          # SAP, login required
+    - "adp"                     # login required
   max_external_per_cycle: 5
   timeout_seconds: 120
+  max_wizard_pages: 12          # safety cap for multi-step wizard loops
+  slow_mo_seconds: 0.0          # pause after each field (set >0 to debug)
+
+  # Credentials for login-gated ATSes. One email+password is reused across every
+  # tenant of a platform: account is created on first visit, signed into after.
+  # Keep these in config.yaml (gitignored) — never commit real credentials.
+  ats_accounts:
+    workday:
+      email: ""                 # blank → falls back to personal.email
+      password: ""
+      # Optional per-tenant overrides:
+      # tenants:
+      #   nvidia.wd5.myworkdayjobs.com: { email: "you@x.com", password: "…" }
+    icims: { email: "", password: "" }
+    taleo: { email: "", password: "" }
+    successfactors: { email: "", password: "" }
+    adp: { email: "", password: "" }
 ```
 
-When a job doesn't have Easy Apply, the bot checks for an external application link. If the URL matches a supported ATS, it opens the form in a new tab, fills all fields using keyword matching + AI, uploads your resume, and submits.
+When a job doesn't have Easy Apply, the bot checks for an external application
+link. If the URL matches a supported ATS, it opens the form in a new tab and
+delegates to a platform-specific handler in `ats_handlers/` that fills every
+field via keyword matching + AI, uploads your resume, and submits.
+
+> **Apply without LinkedIn.** The same engine is available standalone via
+> `apply_urls.py` (or `lla apply`). Hand it a list of apply URLs from anywhere —
+> Indeed, Google Jobs, a careers page, a spreadsheet — and it submits each one
+> in a real browser, no LinkedIn login needed:
+>
+> ```bash
+> python apply_urls.py --file urls.txt --resume ~/cv.pdf
+> python apply_urls.py --file urls.txt --dry-run   # preview ATS detection only
+> ```
+>
+> Results are recorded to SQLite with URL-based dedup, so re-runs skip anything
+> already submitted. The `ats_accounts` credentials below are used here too.
+
+### How each platform is handled
+
+| Platform | Shape | Login | Notes |
+|----------|-------|-------|-------|
+| **Workday** | Multi-page wizard | Creates account | Uses stable `data-automation-id` selectors that are identical across every company tenant. Handles account creation/sign-in, legal name / address / phone sections, custom React dropdowns, and voluntary self-ID (defaults to "decline to answer"). |
+| Greenhouse | Single page | No | Enters embedded iframe if present. |
+| Lever | Single page | No | |
+| Ashby | Single page | No | React form. |
+| SmartRecruiters | Single page | No | Clicks "I'm interested" to reveal the form. |
+| Workable | Single page | No | |
+| Jobvite | Single page | No | |
+| BambooHR | Single page | No | |
+| iCIMS | Multi-page | **Required** | Enters iCIMS content iframe; needs `ats_accounts.icims`. |
+| Taleo | Multi-page | **Required** | Oracle legacy portal; needs `ats_accounts.taleo`. |
+| SuccessFactors | Multi-page | **Required** | SAP; needs `ats_accounts.successfactors`. |
+| ADP | Multi-page | **Required** | needs `ats_accounts.adp`. |
+
+Login-gated platforms are **skipped** (not failed) if no credentials are
+configured for them. The custom-dropdown, radio, and consent-checkbox logic is
+shared, so field coverage is consistent across all 12 platforms.
+
+### Adding a new ATS
+
+The handler framework is a plugin registry. To support another platform, add a
+class to `ats_handlers/handlers.py` (subclass `SinglePageHandler` or
+`MultiStepHandler`) and register it with a URL pattern in
+`ats_handlers/__init__.py`. No changes to `external_apply.py` or `main.py` are
+needed.
 
 ## Google Jobs
 

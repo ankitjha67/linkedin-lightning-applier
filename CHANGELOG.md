@@ -1,5 +1,140 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- **Screener Simulator** (`screener_sim.py` + `lla screen`) — see your resume
+  through the employer's AI screen before submitting. Rubric adapted from
+  HackerRank's open-source hiring-agent (interviewstreet/hiring-agent, MIT),
+  inverted to the candidate side: deterministic hygiene lint (missing links,
+  unquantified bullets, generic project names, missing contact text), role-aware
+  rubric evaluation (engineering vs professional category sets) with hard caps,
+  evidence, a clamped bonus/deduction ledger (bonus ≤ 20, final ∈ [−20, 120]),
+  key strengths and areas for improvement. Fairness rules preserved verbatim
+  (never scores name/school/grades/location). Degrades to lint-only without AI.
+- **GitHub signal enrichment** (`github_enrich.py`) — classify your repos the
+  way screeners do (true open-source vs self-project vs fork), warn when the
+  profile caps the open-source category (~10/35), and rank the top projects to
+  feature per posting (stars, docs, live demo, recency, JD language/topic
+  relevance). Public GitHub API, `GITHUB_TOKEN` optional, fails soft.
+- **Screener pre-submit gate** — `ScreenerSimulator.gate()` shared by all three
+  submit paths: `lla docs` (prints verdict, exit 2 on block), `lla apply` batch
+  (skips blocked rows), and the autonomous loop (opt-in via
+  `screener.gate_in_run`; blocked jobs are marked skipped with the reason).
+  Config: `screener.gate: off|warn|block`. Fail-open by design: jobs with no
+  substantial description, AI unavailable, or an unparseable evaluation are
+  never blocked.
+- +30 tests (`tests/test_screener_sim.py`). Suite 285 → 315.
+- **Professional application-document pipeline** (inspired by
+  MadsLorentzen/ai-job-search, adapted to this repo's Python architecture):
+  - **`latex_docs.py`** — typeset **moderncv** CV + cover letter. Pure-function
+    renderers (`render_cv_tex` / `render_cover_tex`) plus `LaTeXDocsBuilder` that
+    reads identity from config, writes `.tex`, and compiles to PDF with
+    lualatex/xelatex/pdflatex when installed (graceful `.tex`-only fallback).
+    Uses the standard `moderncv` package — nothing vendored.
+  - **`ats_pdf_check.py`** — verify a CV the way an ATS parser sees it:
+    `extract_pdf_text` (pdftotext → pdfminer), `check_parseability` (contact
+    details present, reading order, glyph garbage), `keyword_coverage`, and a
+    combined `ats_report`. Honesty rule: genuine gaps are surfaced, never stuffed.
+  - **`relevance_cutter.py`** — trim a CV to a line budget by
+    relevance×uniqueness×cover-dependency, not by age; preserves order.
+  - **`doc_reviewer.py`** — drafter-reviewer loop: `review` → `revise` →
+    `check_honesty` (flags claims the profile doesn't support). Degrades to
+    no-ops without AI.
+  - **`lla docs`** command — one shot: tailor CV + cover letter, compile, ATS
+    keyword-coverage report, reviewer critique, and honesty check.
+  - **`.claude/` integration** — a `/apply` slash command and a
+    `job-application-assistant` skill for a human-in-the-loop apply flow inside
+    Claude Code (this repo previously had no `.claude/` skills or commands).
+  - **`application_docs.py`** — shared `ApplicationDocsGenerator` orchestrator
+    (tailor → build → ATS-check → review) used by both `lla docs` and the loop.
+  - **Autonomous-loop wiring** — when `latex_docs.auto_generate: true`, every
+    above-threshold job in `lla run` gets a typeset LaTeX CV whose compiled PDF
+    becomes the upload resume (threaded through process_page/run_cycle; opt-in,
+    off by default). Graceful when no LaTeX engine is present.
+  - **`/setup` onboarding** — a `setup.md` slash command + `profile_setup.py`
+    (`gather_profile_text`) that turns a `documents/` folder (CV, LinkedIn
+    export, diplomas, references) into profile text for `ai.cv_text`/`personal.*`.
+    Added the `documents/` scaffold (gitignored contents, tracked structure).
+  - +21 tests (`tests/test_application_docs.py`). Optional dep: `pdfminer.six`
+    (extra `ats`). Fixed a tokenizer bug that captured trailing sentence
+    punctuation ("SQL." → "sql." ) in keyword extraction.
+- **`lla test-llm` command** — send one real prompt to the configured (or
+  `--provider`/`--model`/`--base-url`/`--api-key` overridden) LLM and print the
+  reply, latency, and resolved provider/model. Uses a low-level probe that
+  surfaces the real error (bad model id, 404, auth, unreachable) instead of the
+  silent `""` that `AIAnswerer.generate()` returns on failure, and flags models
+  that return no text (rerank/embedding models can't generate answers). +5 tests.
+
+### Fixed
+- **`validate_config` no longer flags `openrouter`/`claude_cli` as "unknown AI
+  provider"** — both are fully supported by `ai.py` but were missing from the
+  validator's allowlist.
+- **Refreshed the default `OPENROUTER_FREE_CHAIN`** — 3 of its 4 models had been
+  delisted from OpenRouter. Now three verified-live free models
+  (Llama-3.3-70B, Nemotron-3-Super-120B, Nemotron-Nano-9B). The provider-init
+  test no longer pins a magic chain length.
+
+## v2.8.0 — Multi-ATS Auto-Apply (12 platforms, incl. Workday)
+
+### Added
+- **`ats_handlers/` package** — a plugin registry that drives external
+  applications across **12 ATS platforms**: Workday, Greenhouse, Lever, Ashby,
+  SmartRecruiters, Workable, Jobvite, BambooHR, iCIMS, Taleo, SuccessFactors,
+  and ADP (was 4: Greenhouse/Lever/Workday/Ashby).
+  - `base.py` — `ATSHandler` with the hard-won primitives: React-friendly
+    `fill_text` (dispatches input/change events), `select_custom_dropdown`
+    (ARIA listboxes, not native `<select>`), `click_button` (text OR
+    `data-automation-id` OR aria-label), `run_multistep` wizard loop with
+    terminal-state detection, `sweep_page`, `keyword_match`, `upload_file`.
+  - `generic.py` — `SinglePageHandler` / `MultiStepHandler` shapes plus
+    `AccountMixin` for login-gated portals.
+  - `handlers.py` — 11 thin per-platform subclasses.
+  - `workday.py` — robust **Workday** handler: account creation/sign-in reused
+    across every company tenant, multi-page wizard (My Information → Experience →
+    Questions → Voluntary Disclosures → Self-Identify → Review → Submit),
+    targeting the stable `data-automation-id` attributes that are identical on
+    every Workday tenant. Voluntary self-ID defaults to "decline to answer".
+  - `__init__.py` — registry: `detect_ats(url)`, `get_handler(name)`,
+    `handler_for_url(url)`.
+- **`apply_urls.py` — standalone batch apply runner** (+ `lla apply` CLI command).
+  Closes the discovery→submission gap: hand it a list of apply URLs (inline, or a
+  `.txt`/`.csv`/`.json` file) and it drives a real browser through each ATS form
+  and submits — **without LinkedIn** (external ATS apply only needs the browser +
+  config). Reuses the same `ExternalApplier`/`ats_handlers` engine, records
+  results to SQLite with URL-based dedup, and offers a `--dry-run` that detects
+  the ATS per URL with no browser and submits nothing. Flags: `--file`,
+  `--resume`, `--max`, `--headless`, `--force`, `--dry-run`.
+- **`external_apply.ats_accounts`** config — credentials for login-gated ATSes
+  (Workday, iCIMS, Taleo, SuccessFactors, ADP). One email+password is reused
+  per platform; account created on first visit, signed into thereafter. Supports
+  optional per-tenant Workday overrides. Missing creds → platform skipped, not
+  failed. Also added `max_wizard_pages` and `slow_mo_seconds` knobs.
+- **34 new tests** (`tests/test_ats_handlers.py`, `tests/test_apply_urls.py`) —
+  detection across all 12 platforms, registry wiring, handler shapes/account
+  flags, Workday per-tenant credential resolution, keyword-match field logic,
+  plus the batch runner's input parsing (txt/csv/json), URL dedup, stable job
+  IDs, and browserless planning. Suite: 217 → 251.
+
+### Changed
+- **`external_apply.py`** is now a thin orchestrator (tab management, per-cycle
+  caps, ATS detection) that delegates form filling to `ats_handlers/`. Its
+  public API (`.enabled`, `.can_apply()`, `.detect_ats()`, `.apply_external()`,
+  `.max_per_cycle`, `.applied_this_cycle`) is unchanged — `main.py` needs no
+  edits. `supported_ats` now defaults to all 12 platforms.
+- `pyproject.toml` 2.7.1 → 2.8.0; wheel now bundles `ats_handlers/**`.
+- README, CONFIGURATION.md, ARCHITECTURE.md updated with the 12-platform list,
+  the per-platform handling table, and the handler-framework design.
+
+### Notes
+- Adding a new ATS is two edits: a subclass in `ats_handlers/handlers.py` and a
+  URL pattern in `ats_handlers/__init__.py`. No changes to `external_apply.py`
+  or `main.py` required.
+- Login-gated enterprise portals (iCIMS/Taleo/SuccessFactors/ADP) use a
+  best-effort generic register-or-sign-in flow; Workday's flow is fully custom.
+
+---
+
 ## v2.7.1 — Stale-data refresh
 
 ### Changed

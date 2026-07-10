@@ -1,6 +1,6 @@
 # LinkedIn Lightning Applier
 
-Autonomous job application engine. Searches LinkedIn every 10 minutes, applies the moment jobs appear, tailors your resume per job using AI, scores job-candidate fit, messages recruiters, scrapes Google Jobs for cross-platform discovery, fills external ATS forms (Greenhouse, Lever, Workday), tracks everything in SQLite, and serves a real-time monitoring dashboard — all running 24/7.
+Autonomous job application engine. Searches LinkedIn every 10 minutes, applies the moment jobs appear, tailors your resume per job using AI, scores job-candidate fit, messages recruiters, scrapes Google Jobs for cross-platform discovery, fills external ATS forms on 12 platforms (Workday, Greenhouse, Lever, iCIMS, Taleo, and more), tracks everything in SQLite, and serves a real-time monitoring dashboard — all running 24/7.
 
 Built because the difference between "applied 2 minutes after posting" and "applied 24 hours later" is the difference between getting an interview and getting buried under 500 applicants.
 
@@ -11,7 +11,7 @@ The bot runs in a continuous loop. Every cycle:
 1. **Discovers jobs** — Searches LinkedIn across all your configured terms and locations. Optionally scrapes Google Jobs for cross-platform coverage (Indeed, Glassdoor, company sites).
 2. **Scores every job** — AI compares the job description against your CV and scores the match 0-100%. Jobs below your threshold (e.g. 70%) are skipped automatically.
 3. **Tailors your resume** — For jobs above the threshold, AI generates a custom PDF resume emphasizing the skills that match this specific job description.
-4. **Applies** — Clicks Easy Apply (LinkedIn) or fills external ATS forms (Greenhouse, Lever, Workday, Ashby). Keyword matching handles 90% of form fields for free; AI fills the rest.
+4. **Applies** — Clicks Easy Apply (LinkedIn) or fills external ATS forms across 12 platforms (Workday, Greenhouse, Lever, Ashby, SmartRecruiters, Workable, Jobvite, BambooHR, iCIMS, Taleo, SuccessFactors, ADP). Creates accounts and drives multi-page wizards where required. Keyword matching handles 90% of form fields for free; AI fills the rest.
 5. **Messages recruiters** — After applying, queues a personalized LinkedIn message to the hiring manager with a configurable delay (e.g. 2 hours).
 6. **Generates interview prep** — Company research, likely interview questions, and talking points mapped to the JD — saved per job.
 7. **Tracks everything** — Applied/skipped/failed jobs, recruiter directory, visa sponsors, salary benchmarks, match scores, response tracking with ML prediction.
@@ -25,7 +25,7 @@ The bot runs in a continuous loop. Every cycle:
 - **AI Match Scoring** — Scores jobs 0-100% before applying. Trained logistic regression predicts response probability.
 - **AI Resume Tailoring** — Generates custom PDF/DOCX resumes per job using your master CV + the JD. Uploads automatically.
 - **Auto Recruiter Messaging** — AI-generated personalized messages sent via LinkedIn messaging with configurable delay.
-- **External ATS Apply** — Fills Greenhouse, Lever, Workday, and Ashby application forms using AI.
+- **External ATS Apply** — Fills application forms on **12 ATS platforms**: Workday, Greenhouse, Lever, Ashby, SmartRecruiters, Workable, Jobvite, BambooHR, iCIMS, Taleo, SuccessFactors, and ADP. Handles Workday's account-creation + multi-page wizard, custom React dropdowns, and login-gated enterprise portals. Keyword matching fills ~90% of fields for free; AI handles the rest.
 - **Google Jobs Scraping** — Discovers jobs across all platforms via Google Jobs. LinkedIn-linked results processed directly; ATS results handed to the external applier.
 
 ### Tier 2 — Intelligence & Monitoring
@@ -169,7 +169,11 @@ recruiter_messaging:
 
 external_apply:
   enabled: true
-  supported_ats: ["greenhouse", "lever", "workday", "ashby"]
+  supported_ats: ["workday", "greenhouse", "lever", "ashby", "smartrecruiters",
+                  "workable", "jobvite", "bamboohr", "icims", "taleo",
+                  "successfactors", "adp"]
+  ats_accounts:                 # creds for login-gated ATSes (workday, icims, ...)
+    workday: { email: "", password: "" }
 
 google_jobs:
   enabled: true
@@ -222,7 +226,9 @@ match_scorer.py         AI match scoring engine (0-100%)
 resume_tailor.py        AI resume generation — PDF/DOCX/TXT output
 recruiter_messenger.py  Message queue with scheduled delivery
 google_jobs_scraper.py  Google Jobs scraping — Selenium, SerpAPI, or requests
-external_apply.py       ATS form filling — Greenhouse, Lever, Workday, Ashby
+external_apply.py       ATS orchestrator — tab mgmt, detection, per-cycle caps
+ats_handlers/           12 ATS handlers (Workday, Greenhouse, iCIMS, Taleo, ...)
+apply_urls.py           Standalone batch apply — submit ATS forms from a URL list
 activity_sim.py         Human behavior simulation — feed, likes, profile views
 alerts.py               Telegram / Discord / Slack notifications
 dashboard.py            Flask real-time dashboard with dark theme
@@ -271,10 +277,10 @@ tools_layer.py          Protocol-agnostic tool layer (MCP/adapter foundation)
 careers_scanner.py      Curated company careers-page scanner (Greenhouse/Lever/Ashby)
 companies.json          Curated target-company database (30+ companies)
 pyproject.toml          PyPI packaging — `pip install` + `lla` CLI entry point
-tests/                  217 unit + integration tests
+tests/                  315 unit + integration tests
 ```
 
-29,504 lines across 81 Python files and 55 features. Includes 217 unit tests.
+32,240 lines across 95 Python files and 55 features. Includes 315 unit tests.
 
 ## AI Providers
 
@@ -295,6 +301,21 @@ Set `provider` and `fallback_provider` in config. The bot tries: keyword matchin
 
 **Claude CLI** (`provider: claude_cli`) uses your local `claude` binary as the LLM backend — zero API cost if you already have Claude Code. **OpenRouter** (`provider: openrouter`) auto-falls-back through a chain of free models on rate limit — zero cost, no credit card.
 
+**Test any model before relying on it:**
+
+```bash
+lla test-llm                      # test whatever is in config.yaml
+lla test-llm --provider ollama --model llama3.1                      # local, no key
+lla test-llm --provider openrouter --model nvidia/nemotron-3-super-120b-a12b:free
+```
+
+It sends one real prompt and prints the reply, latency, and the resolved
+provider/model/base-url — surfacing the actual error on failure (bad model id,
+auth, unreachable server). Note: only **chat/completion** models work for form
+answers. **Rerank/embedding models cannot generate text** — e.g. an ID with
+`rerank` in it (like `…-nemotron-rerank-vl-…`) will fail the test. Pick a chat
+model instead.
+
 ## MCP Server (Claude Code / Claude Desktop)
 
 Control the bot with natural language from Claude Code or Claude Desktop:
@@ -305,6 +326,124 @@ claude mcp add lla -- python -m mcp_server
 ```
 
 Then in any Claude session: *"Score this job for me"*, *"Show my application stats"*, *"Run application forensics"*, *"Generate a market report"*, *"Tailor my resume for this role"*. 13 tools exposed via the Model Context Protocol — all backed by the same engine as the CLI and bot.
+
+## Apply Without LinkedIn (Batch ATS Apply)
+
+Discovery tools (Indeed, Google Jobs, a careers page, a spreadsheet a recruiter
+sent you) can find jobs and hand you apply links — but they can't click submit.
+`apply_urls.py` is the **last mile**: give it apply URLs and it drives a real
+browser through each ATS form and submits. **No LinkedIn login required** —
+external ATS applications only need your browser + config. Works on all 12
+supported platforms (Workday, Greenhouse, Lever, iCIMS, Taleo, …).
+
+```bash
+# One or more apply URLs
+python apply_urls.py https://boards.greenhouse.io/acme/jobs/123 \
+                     https://nvidia.wd5.myworkdayjobs.com/careers/job/x
+
+# From a file — one URL per line, or a CSV/JSON with metadata
+python apply_urls.py --file urls.txt --resume ~/cv.pdf
+python apply_urls.py --file jobs.csv          # header: url,title,company,description
+
+# Preview first — detect the ATS for each URL, submit nothing
+python apply_urls.py --file urls.txt --dry-run
+
+# Caps & options
+python apply_urls.py --file urls.txt --max 10 --headless
+#   --force     re-apply even if already applied (dedup is by URL)
+
+# Same thing via the CLI:
+lla apply --file urls.txt --dry-run
+```
+
+It fills identity fields from your config for free, uses AI for open-ended
+questions, uploads your resume, creates accounts on login-gated portals
+(Workday/iCIMS/Taleo/… — see `external_apply.ats_accounts`), and records every
+result to SQLite (`applied_jobs` / `failed_jobs`), so re-runs skip anything
+already submitted. Exit status is `0` only if every attempted URL submitted.
+
+The AI that answers open questions is **whatever LLM you configure** — not tied
+to any one provider. Use a cloud model (Gemini, OpenAI, Anthropic, Groq,
+DeepSeek, OpenRouter's free chain, Claude CLI) or a **fully local model**
+(Ollama / LM Studio) that needs **no API key and makes no cloud calls** — a nice
+fit for a job tool handling your personal data. See [AI Providers](#ai-providers).
+Keyword matching still fills ~90% of fields even with AI disabled.
+
+**Workflow to close the loop:** find jobs however you like → collect the apply
+links into `urls.txt` (or a CSV) → `python apply_urls.py --file urls.txt`.
+
+## Tailored Application Documents (LaTeX CV + cover letter)
+
+Beyond the bot's fpdf2 resumes, `lla docs` produces **typeset LaTeX documents** —
+a `moderncv` CV and a matching cover letter — tailored to a specific posting,
+with three quality gates built in:
+
+```bash
+lla docs --jd-file jd.txt --title "Credit Risk Manager" --company "Monzo"
+```
+
+- **ATS text-layer check** — scores the CV's keyword coverage against the posting
+  and verifies it parses the way an ATS actually reads it (contact details as
+  literal text, sane reading order, no glyph garbage).
+- **Drafter → reviewer loop** — a second AI pass critiques the draft (missed
+  keywords, weak framing, generic language), then revises.
+- **Honesty check** — flags any claim the draft makes that your profile
+  (`ai.cv_text` + `documents/`) doesn't support. Real gaps stay visible; nothing
+  is fabricated or keyword-stuffed.
+
+Compiles to PDF if a LaTeX engine (TeX Live / MiKTeX with `moderncv`) is
+installed; otherwise it writes the `.tex` for you to compile. The ATS check uses
+`pdftotext` or `pip install pdfminer.six` when available, else the plain text.
+
+Set `latex_docs.auto_generate: true` to have the **autonomous loop** (`lla run`)
+build a tailored LaTeX CV for every above-threshold job and upload the compiled
+PDF as the resume (off by default — it needs a LaTeX engine and is slower per job).
+
+**Inside Claude Code**, two slash commands drive the human-in-the-loop flow:
+- **`/setup`** — turns your `documents/` folder (CV, LinkedIn export, diplomas,
+  references), a pasted CV, or a short interview into your profile
+  (`ai.cv_text` + `personal.*` + search targets).
+- **`/apply <url-or-jd>`** — evaluate fit → tailor docs → ATS/review/honesty →
+  confirm → optionally submit.
+
+The `job-application-assistant` skill documents the modules. This complements the
+autonomous bot and the batch `lla apply` submitter.
+
+_Document-quality approach inspired by [MadsLorentzen/ai-job-search](https://github.com/MadsLorentzen/ai-job-search) (MIT), reworked as testable Python modules._
+
+## Screener Simulator (see your resume through the employer's AI)
+
+Companies increasingly screen resumes with AI before a human ever reads them.
+`lla screen` runs that screen on **your** resume for a specific posting — rubric
+adapted from [HackerRank's open-source hiring-agent](https://github.com/interviewstreet/hiring-agent) (MIT), inverted to the candidate side:
+
+```bash
+lla screen --jd-file jd.txt                          # uses ai.cv_text from config
+lla screen --jd-file jd.txt --resume-file cv.pdf     # or a specific file
+lla screen --jd-file jd.txt --github your-username   # + GitHub signal analysis
+```
+
+Three layers:
+- **Hygiene lint (no AI needed)** — the exact deductions screeners apply:
+  projects/roles without links (−30-50%), unquantified bullets, generic project
+  names, missing literal contact details.
+- **Rubric evaluation (with AI)** — role-aware category scores with hard caps
+  (engineering: open-source/self-projects/production/skills; professional:
+  experience/domain/impact/tools), evidence per category, a bonus/deduction
+  ledger capped exactly like the employer side, key strengths, and areas for
+  improvement. Fairness rules preserved: never scores name, school, grades, or location.
+- **GitHub signal** (`--github`) — classifies your repos the way the screener
+  does (true open-source contributions vs. personal repos vs. forks), warns when
+  your profile caps the open-source category, and ranks which projects to
+  feature for *this* posting.
+
+**Pre-submit gate.** The same simulation gates every submit path. Set
+`screener.gate` to `warn` (default — log and submit anyway) or `block`:
+`lla docs` prints the verdict (and exits non-zero on block), the batch
+`lla apply` skips blocked rows, and with `screener.gate_in_run: true` the
+autonomous loop skips below-threshold jobs (marked in the DB with the reason).
+Fail-open by design — a job with no substantial description, an unavailable AI,
+or an unparseable evaluation is never blocked.
 
 ## Careers-Page Scanner
 
@@ -390,7 +529,7 @@ Extension points: ATS handlers, job platforms, resume templates, role archetypes
 ## Testing
 
 ```bash
-# Run all 217 tests
+# Run all 315 tests
 python -m unittest discover -s tests -v
 
 # Run specific test module
