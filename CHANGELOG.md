@@ -1,6 +1,22 @@
 # Changelog
 
-## Unreleased
+## v2.9.0 — Screener Gate, LaTeX Docs & Application Craftsmanship
+
+### Fixed (stale-data sweep)
+- **`companies.json`: 9 of 30 entries were dead** (404 on their ATS API —
+  companies moved platforms). Fixed OpenAI, Notion, and Plaid (all migrated
+  Greenhouse → Ashby) and replaced Mistral AI, Wise, Klarna, HashiCorp, Canva,
+  and Retool (moved to proprietary portals the free-API scanner can't read)
+  with verified-live Greenhouse companies: Monzo, GoCardless, Adyen, Affirm,
+  Marqeta, Mercury. All 30 entries re-verified 200 against live APIs.
+- **Model defaults refreshed** in `ai.py`: `anthropic` → `claude-sonnet-5`
+  (was `claude-sonnet-4-6`), `groq` → `llama-3.3-70b-versatile` (the 3.1-70b
+  model was decommissioned by Groq).
+- Docs stats reconciled with reality: 33,402 lines / 101 Python files /
+  53 features (counted from the README feature list) / 315 tests / 25 CLI
+  commands. README "4-model fallback chain" → the chain is config-driven.
+- CLI header docstring and README module listing now include all new modules
+  and commands (`apply`, `docs`, `screen`, `test-llm`).
 
 ### Added
 - **Screener Simulator** (`screener_sim.py` + `lla screen`) — see your resume

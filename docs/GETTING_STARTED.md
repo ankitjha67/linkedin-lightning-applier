@@ -1,6 +1,6 @@
 # How to Run LinkedIn Lightning Applier — Complete Step-by-Step Guide
 
-This guide covers everything from zero to a fully running bot with all 55 features.
+This guide covers everything from zero to a fully running bot with all 53 features.
 
 ---
 

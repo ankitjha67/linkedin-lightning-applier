@@ -73,6 +73,14 @@ The bot runs in a continuous loop. Every cycle:
 - **ATS CV Template Engine** (`cv_template_engine.py`) — ATS-optimized HTML→PDF CV generation with keyword injection from JD.
 - **Pipeline State Machine** (`pipeline_manager.py`) — Formal lifecycle states (discovered → evaluated → applied → interviewing → offer) with enforced transitions.
 
+### Application Craftsmanship (6 — new in v2.9)
+- **Batch External Apply** (`apply_urls.py`) — Submit ATS applications from a plain URL list (txt/CSV/JSON) in a real browser, **no LinkedIn required**. URL-dedup against SQLite; `--dry-run` previews ATS detection.
+- **LaTeX Application Documents** (`latex_docs.py`, `application_docs.py`) — Typeset moderncv CV + matching cover letter per job; compiles via lualatex/xelatex/pdflatex, degrades to `.tex`. Optional auto-generation in the run loop.
+- **ATS Text-Layer Verification** (`ats_pdf_check.py`) — Checks the compiled PDF the way an ATS parser reads it: literal contact details, reading order, glyph garbage, and JD keyword coverage. Relevance-weighted CV trimming (`relevance_cutter.py`) cuts by value, not age.
+- **Drafter-Reviewer + Honesty Check** (`doc_reviewer.py`) — A second AI pass critiques each draft, revises it, and flags any claim your profile doesn't support. Real gaps stay visible; nothing is fabricated.
+- **Screener Simulator + Pre-Submit Gate** (`screener_sim.py`) — Scores your resume the way employer-side AI screeners do (rubric from HackerRank's open-source hiring-agent) and can warn/block weak submissions across `lla docs`, batch apply, and the run loop.
+- **GitHub Signal Enrichment** (`github_enrich.py`) — Classifies your repos like a screener (open-source vs self-project vs fork) and ranks which projects to feature per posting.
+
 ### Core Foundations
 - **AI Form Filling** — 10 LLM providers: OpenAI, Anthropic Claude, Google Gemini, DeepSeek, Groq, Together, OpenRouter (free model chain), Claude CLI (no API key), Ollama (local), LM Studio (local). Answers cached in SQLite.
 - **Recruiter Tracking** — Names, titles, and LinkedIn URLs from "Meet the hiring team" sections.
@@ -229,6 +237,14 @@ google_jobs_scraper.py  Google Jobs scraping — Selenium, SerpAPI, or requests
 external_apply.py       ATS orchestrator — tab mgmt, detection, per-cycle caps
 ats_handlers/           12 ATS handlers (Workday, Greenhouse, iCIMS, Taleo, ...)
 apply_urls.py           Standalone batch apply — submit ATS forms from a URL list
+application_docs.py     Orchestrator: tailor → LaTeX build → ATS check → review
+latex_docs.py           moderncv CV + cover letter renderer/compiler
+ats_pdf_check.py        ATS text-layer verification + keyword coverage
+relevance_cutter.py     Relevance-weighted CV trimming (value, not age)
+doc_reviewer.py         Drafter-reviewer loop + honesty check
+screener_sim.py         Employer-side screener simulation + pre-submit gate
+github_enrich.py        GitHub repo classification + per-posting project ranking
+profile_setup.py        /setup onboarding — documents/ folder → profile text
 activity_sim.py         Human behavior simulation — feed, likes, profile views
 alerts.py               Telegram / Discord / Slack notifications
 dashboard.py            Flask real-time dashboard with dark theme
@@ -280,14 +296,14 @@ pyproject.toml          PyPI packaging — `pip install` + `lla` CLI entry point
 tests/                  315 unit + integration tests
 ```
 
-32,240 lines across 95 Python files and 55 features. Includes 315 unit tests.
+33,402 lines across 101 Python files and 53 features. Includes 315 unit tests.
 
 ## AI Providers
 
 | Provider | Cost | Setup |
 |---|---|---|
 | **Claude CLI** | **Free** (uses your Claude Code auth) | `provider: claude_cli` — requires the `claude` binary in PATH |
-| **OpenRouter** | **Free** (4-model fallback chain) | `provider: openrouter` + free key from openrouter.ai |
+| **OpenRouter** | **Free** (free-model fallback chain) | `provider: openrouter` + free key from openrouter.ai |
 | Ollama | Free, local | `ollama pull llama3.1` |
 | LM Studio | Free, local | Load model, click Start Server |
 | Groq | Free tier | Get API key from groq.com |

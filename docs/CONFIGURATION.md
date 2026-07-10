@@ -21,6 +21,8 @@ Copy `config.example.yaml` to `config.yaml` and fill in your details. `config.ya
 - [Resume Tailoring](#resume-tailoring)
 - [Recruiter Messaging](#recruiter-messaging)
 - [External Apply](#external-apply)
+- [LaTeX Documents](#latex-documents)
+- [Screener Simulator](#screener-simulator)
 - [Google Jobs](#google-jobs)
 - [Dashboard](#dashboard)
 - [Alerts](#alerts)
@@ -371,6 +373,39 @@ class to `ats_handlers/handlers.py` (subclass `SinglePageHandler` or
 `MultiStepHandler`) and register it with a URL pattern in
 `ats_handlers/__init__.py`. No changes to `external_apply.py` or `main.py` are
 needed.
+
+## LaTeX Documents
+
+```yaml
+latex_docs:
+  enabled: true
+  auto_generate: false          # generate a typeset CV per job in `lla run`
+  min_coverage: 60              # ATS keyword-coverage % target
+  output_dir: "data/latex_docs"
+  cv_style: "banking"           # moderncv style
+  cv_color: "blue"
+  engine: ""                    # "" = auto-detect lualatex > xelatex > pdflatex
+```
+
+Powers `lla docs` (and, with `auto_generate: true`, the run loop): a typeset
+moderncv CV + cover letter per job, ATS text-layer check, drafter-reviewer
+critique, and honesty check. Needs a LaTeX distribution to compile; writes
+`.tex` without one. See the README's "Tailored Application Documents" section.
+
+## Screener Simulator
+
+```yaml
+screener:
+  enabled: true
+  pass_score: 65                # final ledger score (max 120) = "likely pass"
+  gate: "warn"                  # off | warn | block — below-threshold behavior
+  gate_in_run: false            # also gate the autonomous loop (1 LLM call/job)
+```
+
+`lla screen --jd-file jd.txt` scores your resume the way employer-side AI
+screeners do (rubric from HackerRank's open-source hiring-agent). The gate is
+shared by `lla docs`, batch `lla apply`, and (opt-in) the run loop; it is
+fail-open — unscoreable jobs are never blocked.
 
 ## Google Jobs
 
@@ -733,12 +768,11 @@ ai:
   api_key: "sk-or-..."           # Free key from openrouter.ai (no credit card)
   openrouter_fallback_models:    # Auto-falls-back on rate limit
     - "meta-llama/llama-3.3-70b-instruct:free"
-    - "nvidia/llama-3.1-nemotron-70b-instruct:free"
-    - "google/gemma-2-9b-it:free"
-    - "qwen/qwen-2.5-72b-instruct:free"
+    - "nvidia/nemotron-3-super-120b-a12b:free"
+    - "nvidia/nemotron-nano-9b-v2:free"
 ```
 
-On a rate-limit/quota error, the bot automatically tries the next free model in the chain. Defaults to the 4-model chain above if `openrouter_fallback_models` is omitted.
+On a rate-limit/quota error, the bot automatically tries the next free model in the chain. Defaults to the chain above (all IDs verified live on OpenRouter) if `openrouter_fallback_models` is omitted. Models get delisted over time — verify yours with `lla test-llm --provider openrouter --model <id>`.
 
 ### Claude CLI (no API key)
 
