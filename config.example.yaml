@@ -891,7 +891,7 @@ careers_scanner:
 #     api_key: "sk-or-..."        # Free key from openrouter.ai
 #     openrouter_fallback_models:  # Free chain — auto-falls-back on rate limit
 #       - "meta-llama/llama-3.3-70b-instruct:free"
-#       - "google/gemma-2-9b-it:free"
+#       - "nvidia/nemotron-nano-9b-v2:free"
 #
 # Example claude_cli config (uses the `claude` binary, no API key):
 #   ai:
