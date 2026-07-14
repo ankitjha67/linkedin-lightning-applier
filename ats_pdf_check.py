@@ -61,7 +61,12 @@ def extract_pdf_text(pdf_path: str) -> Optional[str]:
     try:
         from pdfminer.high_level import extract_text  # type: ignore
         return extract_text(pdf_path)
-    except Exception:
+    except (KeyboardInterrupt, SystemExit):
+        raise
+    except BaseException as exc:
+        # BaseException (not just Exception): a broken native dep (e.g. a
+        # pyo3/cryptography panic) can raise outside the Exception hierarchy.
+        log.debug("pdfminer unavailable/broken: %s", exc)
         return None
 
 

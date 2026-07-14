@@ -2,6 +2,23 @@
 
 ## v2.9.0 — Screener Gate, LaTeX Docs, Answer RAG & Application Craftsmanship
 
+### Added (environment doctor + self-healing browser)
+- **Environment doctor** (`env_doctor.py` + `lla doctor [--fix] [--upgrade]`) —
+  auto-detects Python, the INSTALLED Chrome major version (Windows registry /
+  macOS / Linux binaries), and every required/optional package; `--fix` installs
+  the missing ones one at a time (a single build failure never blocks the rest;
+  pip/setuptools/wheel refreshed first), `--upgrade` bumps the browser stack.
+  Reports LaTeX engine / pdftotext / Ollama / LM Studio presence.
+- **Self-healing browser launch** — `create_browser` auto-detects Chrome when
+  `browser.chrome_version` is unset (now the default: `null`), and on a launch
+  mismatch re-pins to the version named in the error, then (with
+  `browser.auto_update_driver: true`) upgrades undetected-chromedriver+selenium
+  and retries once. No more "ChromeDriver only supports Chrome version NNN".
+- Hardened `ats_pdf_check.extract_pdf_text` to catch `BaseException` — a broken
+  optional native dep (e.g. a pyo3/cryptography panic under pdfminer) no longer
+  crashes the ATS check.
+- +15 tests (`tests/test_env_doctor.py`). Suite 357 → 372.
+
 ### Added (work authorization, Answer RAG, any-job-board, more LLMs)
 - **Country-aware work authorization** (`work_auth.py` + `work_authorization:`
   config) — "Are you authorized to work?" / "Do you require sponsorship?" is

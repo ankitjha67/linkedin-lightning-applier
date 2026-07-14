@@ -272,7 +272,11 @@ scheduling:
 browser:
   headless: false
   stealth_mode: true
-  chrome_version: 146
+  # chrome_version: leave blank/omit to AUTO-DETECT your installed Chrome (recommended).
+  # The driver pins itself to whatever Chrome you have, and self-heals on a
+  # mismatch. Only set a number to force a specific major version.
+  chrome_version: null
+  auto_update_driver: true       # on a launch mismatch, upgrade the driver package and retry
   window_width: 1280
   window_height: 900
   user_data_dir: ""

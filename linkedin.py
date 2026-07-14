@@ -89,9 +89,53 @@ def create_browser(cfg: dict):
     ud = bc.get("user_data_dir", "")
     if ud:
         opts.add_argument(f"--user-data-dir={ud}")
-    # Pin ChromeDriver to match installed Chrome version
+    # Pin ChromeDriver to the INSTALLED Chrome version. Config wins; otherwise
+    # auto-detect (Windows registry / mac / linux binaries) so a fresh machine
+    # never hits "ChromeDriver only supports Chrome version NNN".
     version_main = bc.get("chrome_version", None)
-    driver = uc.Chrome(options=opts, use_subprocess=True, version_main=version_main)
+    if not version_main:
+        try:
+            from env_doctor import detect_chrome_version
+            version_main = detect_chrome_version()
+            if version_main:
+                log.info(f"Auto-detected Chrome {version_main}")
+        except Exception:
+            version_main = None
+    auto_update = bc.get("auto_update_driver", True)
+    try:
+        driver = uc.Chrome(options=opts, use_subprocess=True, version_main=version_main)
+    except Exception as e:
+        # Self-heal step 1: the error usually names the Chrome version it wants.
+        wanted = None
+        try:
+            from env_doctor import chrome_version_from_error
+            wanted = chrome_version_from_error(e)
+        except Exception:
+            pass
+        if wanted and wanted != version_main:
+            log.warning(f"Driver/Chrome mismatch — retrying pinned to Chrome {wanted}")
+            try:
+                driver = uc.Chrome(options=opts, use_subprocess=True, version_main=wanted)
+                driver.implicitly_wait(5)
+                return driver
+            except Exception as e2:
+                e = e2
+        # Self-heal step 2: undetected-chromedriver itself may be too old for a
+        # brand-new Chrome — upgrade the package in-place and retry once.
+        if auto_update:
+            log.warning("Upgrading undetected-chromedriver + selenium, then retrying…")
+            try:
+                from env_doctor import install_packages
+                if install_packages(["undetected-chromedriver", "selenium"], upgrade=True):
+                    import importlib
+                    importlib.reload(uc)
+                    driver = uc.Chrome(options=opts, use_subprocess=True,
+                                       version_main=wanted or version_main)
+                    driver.implicitly_wait(5)
+                    return driver
+            except Exception as e3:
+                e = e3
+        raise e
     driver.implicitly_wait(5)
     return driver
 
