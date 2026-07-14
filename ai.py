@@ -112,6 +112,17 @@ class AIAnswerer:
         if self.db:
             self._init_cache_table()
 
+        # Country-aware work authorization (citizenship + visas held). Runs
+        # BEFORE cache/RAG/LLM: these answers depend on the job's country, so
+        # a stored "Yes" must never leak across borders.
+        self.work_auth = None
+        try:
+            from work_auth import WorkAuthorization
+            wa = WorkAuthorization(cfg)
+            self.work_auth = wa if wa.enabled else None
+        except Exception as exc:
+            log.debug(f"WorkAuthorization unavailable: {exc}")
+
         # Semantic answer memory (RAG): reuses answers for similar questions
         # (zero tokens) and injects similar Q&As as context on cache misses.
         self.rag = None
@@ -296,7 +307,8 @@ class AIAnswerer:
         self.db.commit()
 
     def answer(self, question: str, options: list = None, job_title: str = "",
-               company: str = "", job_description: str = "") -> str:
+               company: str = "", job_description: str = "",
+               job_location: str = "") -> str:
         """
         Get an AI-generated answer for a job application question.
 
@@ -313,26 +325,39 @@ class AIAnswerer:
         if not self.enabled:
             return ""
 
-        # 1. Exact cache (verbatim repeat of question + options)
-        cached = self._check_cache(question, options)
-        if cached:
-            return cached
+        # 0. Work authorization — deterministic, per-country, highest priority.
+        #    These answers depend on the job's country, so they are never
+        #    cached or RAG-saved, and recognized questions skip cache/RAG
+        #    entirely (a stored "Yes" must not leak across borders).
+        is_wa_question = bool(self.work_auth and self.work_auth.recognizes(question))
+        if self.work_auth:
+            wa = self.work_auth.answer(question, job_location, options)
+            if wa is not None:
+                log.info(f"  🛂 Work-auth answer: \"{question[:50]}\" → \"{wa}\"")
+                return wa
 
-        # 2. RAG reuse — a semantically-equivalent question was answered before
-        #    (zero LLM tokens). Options-aware: only fires if the stored answer
-        #    fits the offered options.
-        if self.rag:
-            hit = self.rag.lookup(question, options)
-            if hit:
-                log.info(f"  ♻️  RAG answer ({hit['similarity']}): "
-                         f"\"{question[:50]}\" → \"{hit['answer']}\"")
-                self._save_cache(question, hit["answer"], options)
-                return hit["answer"]
+        if not is_wa_question:
+            # 1. Exact cache (verbatim repeat of question + options)
+            cached = self._check_cache(question, options)
+            if cached:
+                return cached
+
+            # 2. RAG reuse — a semantically-equivalent question was answered
+            #    before (zero LLM tokens). Options-aware.
+            if self.rag:
+                hit = self.rag.lookup(question, options)
+                if hit:
+                    log.info(f"  ♻️  RAG answer ({hit['similarity']}): "
+                             f"\"{question[:50]}\" → \"{hit['answer']}\"")
+                    self._save_cache(question, hit["answer"], options)
+                    return hit["answer"]
 
         # 3. LLM call — with similar past Q&As injected for consistency
         system_prompt = self._build_system_prompt()
         user_prompt = self._build_user_prompt(question, options, job_title, company, job_description)
-        if self.rag:
+        if job_location:
+            user_prompt = f"Job location: {job_location}\n{user_prompt}"
+        if self.rag and not is_wa_question:
             ctx = self.rag.context_block(question)
             if ctx:
                 user_prompt = f"{ctx}\n\n{user_prompt}"
@@ -344,9 +369,10 @@ class AIAnswerer:
                 if options:
                     answer = self._match_to_option(answer, options)
 
-                self._save_cache(question, answer, options)
-                if self.rag:
-                    self.rag.save(question, answer, options)
+                if not is_wa_question:
+                    self._save_cache(question, answer, options)
+                    if self.rag:
+                        self.rag.save(question, answer, options)
                 log.info(f"  🤖 AI answer: \"{question[:50]}\" → \"{answer}\"")
                 return answer
         except Exception as e:

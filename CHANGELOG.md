@@ -2,7 +2,21 @@
 
 ## v2.9.0 — Screener Gate, LaTeX Docs, Answer RAG & Application Craftsmanship
 
-### Added (Answer RAG, any-job-board, more LLMs)
+### Added (work authorization, Answer RAG, any-job-board, more LLMs)
+- **Country-aware work authorization** (`work_auth.py` + `work_authorization:`
+  config) — "Are you authorized to work?" / "Do you require sponsorship?" is
+  now derived from the JOB's country vs your citizenship + visas held, instead
+  of one global answer. Applying to a country not covered automatically answers
+  authorized: No / sponsorship: Yes; a held visa (e.g. UK Skilled Worker) flips
+  only that country. Country comes from the question text first, else the job
+  location (aliases + major-hub city map; ambiguous codes like "US"/"IN" only
+  match uppercase). Wired ahead of the exact cache, RAG, and the global keyword
+  answers in all three answering layers (AIAnswerer, ATS handlers, LinkedIn
+  Easy Apply) — and recognized questions are never cached or RAG-saved, so an
+  answer can never leak across borders. Options-aware (fits "No, I do not
+  require sponsorship"-style choices; refuses options that can't express the
+  truth). Falls back to legacy application.authorized_to_work/require_visa when
+  unconfigured. +21 tests (tests/test_work_auth.py). Suite 336 → 357.
 - **Semantic Answer Memory (RAG)** (`answer_rag.py`, wired into
   `AIAnswerer.answer()`) — remembers every form answer; a semantically-similar
   question is answered straight from memory with **zero LLM tokens**
@@ -23,7 +37,7 @@
   `ai.base_url` with no API key required for local servers. Env keys:
   `XAI_API_KEY`/`GROK_API_KEY`, `MISTRAL_API_KEY`, `CUSTOM_API_KEY`/`LLM_API_KEY`.
   13 providers total.
-- +21 tests (`tests/test_answer_rag.py`). Suite 315 → 336.
+- +21 tests (`tests/test_answer_rag.py`).
 
 ### Fixed (stale-data sweep)
 - **`companies.json`: 9 of 30 entries were dead** (404 on their ATS API —

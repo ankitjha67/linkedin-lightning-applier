@@ -296,10 +296,10 @@ tools_layer.py          Protocol-agnostic tool layer (MCP/adapter foundation)
 careers_scanner.py      Curated company careers-page scanner (Greenhouse/Lever/Ashby)
 companies.json          Curated target-company database (30+ companies)
 pyproject.toml          PyPI packaging — `pip install` + `lla` CLI entry point
-tests/                  336 unit + integration tests
+tests/                  357 unit + integration tests
 ```
 
-33,951 lines across 103 Python files and 55 features. Includes 336 unit tests.
+34,497 lines across 105 Python files and 56 features. Includes 357 unit tests.
 
 ## AI Providers
 
@@ -548,7 +548,7 @@ Extension points: ATS handlers, job platforms, resume templates, role archetypes
 ## Testing
 
 ```bash
-# Run all 336 tests
+# Run all 357 tests
 python -m unittest discover -s tests -v
 
 # Run specific test module

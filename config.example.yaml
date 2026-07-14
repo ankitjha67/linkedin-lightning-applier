@@ -62,6 +62,25 @@ search:
   randomize_order: true
 
 # ═══════════════════════════════════════════════════════════════
+# WORK AUTHORIZATION — per-country truth for visa/authorization questions
+# "Are you authorized to work in X?" / "Do you require sponsorship?" is derived
+# from the JOB's country vs your citizenship + visas held — not from one global
+# answer. Applying to a country not listed below automatically answers
+# authorized: No / sponsorship required: Yes. Answered deterministically
+# (zero LLM tokens) and NEVER cached across countries.
+# ═══════════════════════════════════════════════════════════════
+work_authorization:
+  citizenship:
+    - "India"                    # countries where you can work by right
+  visas: []                      # work authorizations you hold, e.g.:
+  #  - country: "United Kingdom"
+  #    type: "Skilled Worker"    # optional, informational
+  #  - country: "Singapore"
+  #    type: "Employment Pass"
+  # Leave both empty to fall back to the legacy application.authorized_to_work /
+  # application.require_visa single answers.
+
+# ═══════════════════════════════════════════════════════════════
 # APPLICATION DEFAULTS
 # ═══════════════════════════════════════════════════════════════
 application:

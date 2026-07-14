@@ -62,6 +62,15 @@ class ATSHandler:
         self.ats_accounts = cfg.get("external_apply", {}).get("ats_accounts", {})
         self.max_pages = cfg.get("external_apply", {}).get("max_wizard_pages", 12)
         self.slow = cfg.get("external_apply", {}).get("slow_mo_seconds", 0.0)
+        # Country-aware work authorization — consulted before the global
+        # keyword answers so "authorized to work?" reflects the JOB's country.
+        self.work_auth = None
+        try:
+            from work_auth import WorkAuthorization
+            wa = WorkAuthorization(cfg)
+            self.work_auth = wa if wa.enabled else None
+        except Exception:
+            pass
 
     # ------------------------------------------------------------------
     # Entry point — subclasses override
@@ -380,7 +389,27 @@ class ATSHandler:
 
     def answer_field(self, label: str, job_context: dict,
                      options=None, long: bool = False) -> str:
-        """Return a value for a labeled field: keyword match first, then AI."""
+        """Return a value for a labeled field: work-auth → keyword → AI."""
+        location = (job_context or {}).get("location", "")
+        # Country-aware authorization beats the global keyword answers: the
+        # same "authorized to work?" is Yes in your home country, No abroad.
+        if self.work_auth:
+            wa = self.work_auth.answer(label, location, options)
+            if wa is not None:
+                return wa
+            if self.work_auth.recognizes(label):
+                # Recognized but unanswerable here (no country / options don't
+                # fit) — skip the global keyword answer, let the AI decide with
+                # the location in view.
+                if not self.ai:
+                    return ""
+                try:
+                    return self.ai.answer(label, options=options,
+                                          job_title=job_context.get("title", ""),
+                                          company=job_context.get("company", ""),
+                                          job_location=location)
+                except Exception:
+                    return ""
         val = self.keyword_match(label)
         if val:
             return val
@@ -390,11 +419,13 @@ class ATSHandler:
             if options:
                 return self.ai.answer(label, options=options,
                                       job_title=job_context.get("title", ""),
-                                      company=job_context.get("company", ""))
+                                      company=job_context.get("company", ""),
+                                      job_location=location)
             return self.ai.answer(label,
                                   job_title=job_context.get("title", ""),
                                   company=job_context.get("company", ""),
-                                  job_description=job_context.get("description", "")[:500] if long else "")
+                                  job_description=job_context.get("description", "")[:500] if long else "",
+                                  job_location=location)
         except Exception:
             return ""
 

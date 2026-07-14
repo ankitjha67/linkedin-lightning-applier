@@ -4,25 +4,28 @@ Browser setup, login, search, job extraction, recruiter detection,
 visa sponsorship analysis, Easy Apply flow.
 """
 
+import logging
 import os
+import random
 import re
 import time
-import random
-import logging
 from typing import Optional
 from urllib.parse import urlencode
 
 import undetected_chromedriver as uc
+from selenium.common.exceptions import (
+    ElementClickInterceptedException,
+    ElementNotInteractableException,
+    NoSuchElementException,
+    StaleElementReferenceException,
+    TimeoutException,
+)
+from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
-from selenium.webdriver.common.action_chains import ActionChains
-from selenium.webdriver.support.ui import WebDriverWait, Select
-from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.remote.webelement import WebElement
-from selenium.common.exceptions import (
-    NoSuchElementException, TimeoutException, ElementClickInterceptedException,
-    StaleElementReferenceException, ElementNotInteractableException,
-)
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.support.ui import Select, WebDriverWait
 
 log = logging.getLogger("lla.linkedin")
 
@@ -999,6 +1002,15 @@ def answer_questions(driver, modal: WebElement, cfg: dict, ai=None, job_context:
     qa = cfg.get("question_answers", {})
     resume_path = cfg.get("resume", {}).get("default_resume_path", "")
     jc = job_context or {}
+    location = jc.get("location", "")
+    # Country-aware work authorization — overrides the single global
+    # authorized/visa answers with per-country truth (citizenship + visas).
+    try:
+        from work_auth import WorkAuthorization
+        _wa = WorkAuthorization(cfg)
+        work_auth = _wa if _wa.enabled else None
+    except Exception:
+        work_auth = None
 
     # Text inputs
     for inp in modal.find_elements(By.CSS_SELECTOR, "input, textarea"):
@@ -1010,7 +1022,7 @@ def answer_questions(driver, modal: WebElement, cfg: dict, ai=None, job_context:
             if not lbl: continue
 
             # 1) Keyword matching (free, instant)
-            ans = _find_answer(lbl, personal, app, qa)
+            ans = _find_answer(lbl, personal, app, qa, work_auth, location)
 
             # 2) AI fallback
             if not ans and ai:
@@ -1020,11 +1032,12 @@ def answer_questions(driver, modal: WebElement, cfg: dict, ai=None, job_context:
                 else:
                     ans = ai.answer(lbl, job_title=jc.get("title",""),
                                    company=jc.get("company",""),
-                                   job_description=jc.get("description","")[:500])
+                                   job_description=jc.get("description","")[:500],
+                                   job_location=location)
 
             if ans:
                 text_input(driver, inp, ans)
-                source = "🤖" if not _find_answer(lbl, personal, app, qa) else "📝"
+                source = "🤖" if not _find_answer(lbl, personal, app, qa, work_auth, location) else "📝"
                 log.debug(f'  {source} "{lbl}" → "{ans}"')
                 time.sleep(0.2)
         except (StaleElementReferenceException, ElementNotInteractableException):
@@ -1041,17 +1054,18 @@ def answer_questions(driver, modal: WebElement, cfg: dict, ai=None, job_context:
             options = [o.text.strip() for o in select_obj.options if o.text.strip() and o.text.strip() != "Select an option"]
 
             # 1) Keyword match
-            ans = _find_answer(lbl, personal, app, qa)
+            ans = _find_answer(lbl, personal, app, qa, work_auth, location)
 
             # 2) AI fallback with options
             if not ans and ai and options:
                 ans = ai.answer(lbl, options=options,
                                job_title=jc.get("title",""),
-                               company=jc.get("company",""))
+                               company=jc.get("company",""),
+                               job_location=location)
 
             if ans:
                 _pick_option(sel, ans)
-                source = "🤖" if not _find_answer(lbl, personal, app, qa) else "📝"
+                source = "🤖" if not _find_answer(lbl, personal, app, qa, work_auth, location) else "📝"
                 log.debug(f'  {source} [sel] "{lbl}" → "{ans}"')
                 time.sleep(0.2)
         except Exception: continue
@@ -1067,20 +1081,21 @@ def answer_questions(driver, modal: WebElement, cfg: dict, ai=None, job_context:
             radio_labels = [l.text.strip() for l in fs.find_elements(By.TAG_NAME, "label") if l.text.strip()]
 
             # 1) Keyword match
-            ans = _find_answer(legend.lower(), personal, app, qa)
+            ans = _find_answer(legend.lower(), personal, app, qa, work_auth, location)
 
             # 2) AI fallback with options
             if not ans and ai and radio_labels:
                 ans = ai.answer(legend, options=radio_labels,
                                job_title=jc.get("title",""),
-                               company=jc.get("company",""))
+                               company=jc.get("company",""),
+                               job_location=location)
 
             if ans:
                 for label in fs.find_elements(By.TAG_NAME, "label"):
                     if ans.lower() in label.text.strip().lower():
                         radios = label.find_elements(By.CSS_SELECTOR, "input[type='radio']")
                         safe_click(driver, radios[0] if radios else label)
-                        source = "🤖" if not _find_answer(legend.lower(), personal, app, qa) else "📝"
+                        source = "🤖" if not _find_answer(legend.lower(), personal, app, qa, work_auth, location) else "📝"
                         log.debug(f'  {source} [radio] "{legend}" → "{ans}"')
                         time.sleep(0.15)
                         break
@@ -1125,7 +1140,17 @@ def _get_label(driver, el, scope) -> str:
     return ""
 
 
-def _find_answer(l: str, personal: dict, app: dict, qa: dict) -> str:
+def _find_answer(l: str, personal: dict, app: dict, qa: dict,
+                 work_auth=None, location: str = "") -> str:
+    # Work authorization first: the answer depends on the JOB's country, so the
+    # global authorized_to_work/require_visa values must not be used when a
+    # work_authorization config exists.
+    if work_auth:
+        wa = work_auth.answer(l, location)
+        if wa is not None:
+            return wa
+        if work_auth.recognizes(l):
+            return ""  # recognized but unresolvable here -> let AI decide
     if "first name" in l: return personal.get("first_name","")
     if "last name" in l: return personal.get("last_name","")
     if "full name" in l or "your name" in l: return personal.get("full_name","")
