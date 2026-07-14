@@ -188,6 +188,9 @@ class BatchApplier:
         from linkedin import create_browser
 
         supported = [(j, detect_ats(j["url"])) for j in jobs]
+        if self.applier.allow_generic_fallback:
+            # Any job board: route unknown URLs through the generic handler.
+            supported = [(j, a or "generic") for j, a in supported]
         applyable = [(j, a) for j, a in supported if a]
         unsupported = [j for j, a in supported if not a]
         for j in unsupported:

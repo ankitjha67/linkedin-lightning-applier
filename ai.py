@@ -2,14 +2,17 @@
 AI-powered question answering for job applications.
 
 Supports every major LLM provider through a unified interface:
-  PAID:       OpenAI, Anthropic Claude, Google Gemini, DeepSeek
-  OPEN-SOURCE: Ollama (local), LM Studio (local), Groq, Together, any OpenAI-compatible
+  PAID:   OpenAI, Anthropic Claude, Google Gemini, DeepSeek, xAI Grok, Mistral
+  FREE:   OpenRouter (free chain), Groq, Together, Claude CLI (no key)
+  LOCAL:  Ollama, LM Studio, or `custom` — ANY OpenAI-compatible endpoint
+          (vLLM, llama.cpp server, LocalAI…) via ai.base_url, no key needed
 
 Flow:
-  1. Check answer cache (SQLite) — instant, free
-  2. Try keyword matching (config.yaml) — instant, free
-  3. If both miss AND ai_enabled=true → call LLM with CV context
-  4. Cache the LLM answer for future use
+  1. Exact answer cache (SQLite) — instant, free
+  2. RAG semantic memory (answer_rag) — similar question answered before →
+     reuse directly, zero tokens
+  3. Call LLM with CV context + similar past Q&As injected for consistency
+  4. Cache + RAG-save the answer for future reuse
 
 All providers use the OpenAI client library (they all support OpenAI-compatible APIs).
 """
@@ -32,8 +35,11 @@ PROVIDER_URLS = {
     "groq":       "https://api.groq.com/openai/v1",
     "together":   "https://api.together.xyz/v1",
     "openrouter": "https://openrouter.ai/api/v1",    # Free model fallback chain
+    "xai":        "https://api.x.ai/v1",             # Grok
+    "mistral":    "https://api.mistral.ai/v1",
     "ollama":     "http://localhost:11434/v1",
     "lmstudio":   "http://localhost:1234/v1",
+    "custom":     "",  # any OpenAI-compatible server (vLLM, llama.cpp, LocalAI…) — set ai.base_url
     # claude_cli is a subprocess provider — no URL
 }
 
@@ -46,8 +52,11 @@ DEFAULT_MODELS = {
     "groq":       "llama-3.3-70b-versatile",
     "together":   "meta-llama/Llama-3.1-70B-Instruct-Turbo",
     "openrouter": "meta-llama/llama-3.3-70b-instruct:free",
+    "xai":        "grok-4",
+    "mistral":    "mistral-large-latest",
     "ollama":     "llama3.1",
     "lmstudio":   "local-model",
+    "custom":     "local-model",
     "claude_cli": "",  # empty = Claude Code's default model
 }
 
@@ -103,6 +112,16 @@ class AIAnswerer:
         if self.db:
             self._init_cache_table()
 
+        # Semantic answer memory (RAG): reuses answers for similar questions
+        # (zero tokens) and injects similar Q&As as context on cache misses.
+        self.rag = None
+        if self.db is not None and cfg.get("rag", {}).get("enabled", True):
+            try:
+                from answer_rag import AnswerRAG
+                self.rag = AnswerRAG(self.db, cfg)
+            except Exception as exc:
+                log.debug(f"AnswerRAG unavailable: {exc}")
+
         # Clients (lazy init)
         self._client = None
         self._fallback_client = None
@@ -111,7 +130,7 @@ class AIAnswerer:
             log.info(f"AI enabled: primary={self.provider}/{self.model} @ {self.base_url}")
             if self.fallback_enabled and self.fallback_provider:
                 log.info(f"  Fallback: {self.fallback_provider}/{self.fallback_model} @ {self.fallback_base_url}")
-            if not self.api_key and self.provider not in ("ollama", "lmstudio", "claude_cli"):
+            if not self.api_key and self.provider not in ("ollama", "lmstudio", "custom", "claude_cli"):
                 log.warning(f"  No API key set for {self.provider}!")
 
     def _init_cache_table(self):
@@ -145,6 +164,9 @@ class AIAnswerer:
             "groq":       ["GROQ_API_KEY"],
             "together":   ["TOGETHER_API_KEY"],
             "openrouter": ["OPENROUTER_API_KEY"],
+            "xai":        ["XAI_API_KEY", "GROK_API_KEY"],
+            "mistral":    ["MISTRAL_API_KEY"],
+            "custom":     ["CUSTOM_API_KEY", "LLM_API_KEY"],
         }.get(provider, [f"{provider.upper()}_API_KEY"])
         for name in candidates:
             val = os.environ.get(name, "")
@@ -192,7 +214,7 @@ class AIAnswerer:
         kwargs = {"base_url": base_url, "timeout": self.timeout}
 
         # Local providers don't need API keys
-        if provider in ("ollama", "lmstudio"):
+        if provider in ("ollama", "lmstudio", "custom") and not api_key:
             kwargs["api_key"] = "not-needed"
         else:
             kwargs["api_key"] = api_key
@@ -291,16 +313,30 @@ class AIAnswerer:
         if not self.enabled:
             return ""
 
-        # Check cache first
+        # 1. Exact cache (verbatim repeat of question + options)
         cached = self._check_cache(question, options)
         if cached:
             return cached
 
-        # Build the prompt
+        # 2. RAG reuse — a semantically-equivalent question was answered before
+        #    (zero LLM tokens). Options-aware: only fires if the stored answer
+        #    fits the offered options.
+        if self.rag:
+            hit = self.rag.lookup(question, options)
+            if hit:
+                log.info(f"  ♻️  RAG answer ({hit['similarity']}): "
+                         f"\"{question[:50]}\" → \"{hit['answer']}\"")
+                self._save_cache(question, hit["answer"], options)
+                return hit["answer"]
+
+        # 3. LLM call — with similar past Q&As injected for consistency
         system_prompt = self._build_system_prompt()
         user_prompt = self._build_user_prompt(question, options, job_title, company, job_description)
+        if self.rag:
+            ctx = self.rag.context_block(question)
+            if ctx:
+                user_prompt = f"{ctx}\n\n{user_prompt}"
 
-        # Call the LLM
         try:
             answer = self._call_llm(system_prompt, user_prompt)
             if answer:
@@ -309,6 +345,8 @@ class AIAnswerer:
                     answer = self._match_to_option(answer, options)
 
                 self._save_cache(question, answer, options)
+                if self.rag:
+                    self.rag.save(question, answer, options)
                 log.info(f"  🤖 AI answer: \"{question[:50]}\" → \"{answer}\"")
                 return answer
         except Exception as e:

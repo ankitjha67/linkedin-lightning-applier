@@ -1,6 +1,6 @@
 # How to Run LinkedIn Lightning Applier — Complete Step-by-Step Guide
 
-This guide covers everything from zero to a fully running bot with all 53 features.
+This guide covers everything from zero to a fully running bot with all 55 features.
 
 ---
 
@@ -485,7 +485,7 @@ The bot generates multiple resume variants and uses Thompson sampling to learn w
 ## 10. Running Tests
 
 ```bash
-# Run all 315 tests
+# Run all 336 tests
 python -m unittest discover -s tests -v
 
 # Run specific test module

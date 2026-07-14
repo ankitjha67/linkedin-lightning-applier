@@ -197,7 +197,7 @@ apply_url ──> detect_ats() ──> get_handler() ──> handler.apply(drive
 
 ## Database Schema
 
-SQLite database at `data/state.db` with 48 tables:
+SQLite database at `data/state.db` with 49 tables:
 
 ### Core Tables
 

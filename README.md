@@ -73,16 +73,18 @@ The bot runs in a continuous loop. Every cycle:
 - **ATS CV Template Engine** (`cv_template_engine.py`) — ATS-optimized HTML→PDF CV generation with keyword injection from JD.
 - **Pipeline State Machine** (`pipeline_manager.py`) — Formal lifecycle states (discovered → evaluated → applied → interviewing → offer) with enforced transitions.
 
-### Application Craftsmanship (6 — new in v2.9)
+### Application Craftsmanship (8 — new in v2.9)
 - **Batch External Apply** (`apply_urls.py`) — Submit ATS applications from a plain URL list (txt/CSV/JSON) in a real browser, **no LinkedIn required**. URL-dedup against SQLite; `--dry-run` previews ATS detection.
 - **LaTeX Application Documents** (`latex_docs.py`, `application_docs.py`) — Typeset moderncv CV + matching cover letter per job; compiles via lualatex/xelatex/pdflatex, degrades to `.tex`. Optional auto-generation in the run loop.
 - **ATS Text-Layer Verification** (`ats_pdf_check.py`) — Checks the compiled PDF the way an ATS parser reads it: literal contact details, reading order, glyph garbage, and JD keyword coverage. Relevance-weighted CV trimming (`relevance_cutter.py`) cuts by value, not age.
 - **Drafter-Reviewer + Honesty Check** (`doc_reviewer.py`) — A second AI pass critiques each draft, revises it, and flags any claim your profile doesn't support. Real gaps stay visible; nothing is fabricated.
 - **Screener Simulator + Pre-Submit Gate** (`screener_sim.py`) — Scores your resume the way employer-side AI screeners do (rubric from HackerRank's open-source hiring-agent) and can warn/block weak submissions across `lla docs`, batch apply, and the run loop.
+- **Semantic Answer Memory (RAG)** (`answer_rag.py`) — Remembers every form answer; semantically-similar questions are answered straight from memory with **zero LLM tokens**, and near-matches are injected into the prompt for consistency. Pure-Python TF-IDF — works offline with any provider.
+- **Any-Job-Board Generic Apply** — URLs matching no known ATS fall back to a best-effort generic handler that sweeps the form and can **register/sign in** with shared credentials (`ats_accounts.generic`). Disable with `external_apply.allow_generic_fallback: false`.
 - **GitHub Signal Enrichment** (`github_enrich.py`) — Classifies your repos like a screener (open-source vs self-project vs fork) and ranks which projects to feature per posting.
 
 ### Core Foundations
-- **AI Form Filling** — 10 LLM providers: OpenAI, Anthropic Claude, Google Gemini, DeepSeek, Groq, Together, OpenRouter (free model chain), Claude CLI (no API key), Ollama (local), LM Studio (local). Answers cached in SQLite.
+- **AI Form Filling** — 13 LLM providers: OpenAI, Anthropic Claude, Google Gemini, DeepSeek, Groq, Together, OpenRouter (free model chain), xAI Grok, Mistral, Claude CLI (no API key), Ollama (local), LM Studio (local), and `custom` — any OpenAI-compatible endpoint (vLLM, llama.cpp server, LocalAI). Answers cached in SQLite.
 - **Recruiter Tracking** — Names, titles, and LinkedIn URLs from "Meet the hiring team" sections.
 - **Visa Detection** — Positive/negative keyword matching for sponsorship signals.
 - **Ban Prevention** — undetected-chromedriver, daily/cycle caps, randomized delays, active hours, human-like scrolling.
@@ -228,7 +230,7 @@ The `data/` folder (auto-created) contains:
 main.py                 Orchestrator — scheduling, filtering, feature integration
 linkedin.py             Browser — login, search, Easy Apply, recruiter messaging
 ai.py                   Multi-provider LLM — answers, cover letters, skill extraction
-state.py                SQLite — 48 tables, migrations, CSV export
+state.py                SQLite — 49 tables, migrations, CSV export
 
 match_scorer.py         AI match scoring engine (0-100%)
 resume_tailor.py        AI resume generation — PDF/DOCX/TXT output
@@ -245,6 +247,7 @@ doc_reviewer.py         Drafter-reviewer loop + honesty check
 screener_sim.py         Employer-side screener simulation + pre-submit gate
 github_enrich.py        GitHub repo classification + per-posting project ranking
 profile_setup.py        /setup onboarding — documents/ folder → profile text
+answer_rag.py           Semantic answer memory — zero-token reuse of similar Q&As
 activity_sim.py         Human behavior simulation — feed, likes, profile views
 alerts.py               Telegram / Discord / Slack notifications
 dashboard.py            Flask real-time dashboard with dark theme
@@ -293,10 +296,10 @@ tools_layer.py          Protocol-agnostic tool layer (MCP/adapter foundation)
 careers_scanner.py      Curated company careers-page scanner (Greenhouse/Lever/Ashby)
 companies.json          Curated target-company database (30+ companies)
 pyproject.toml          PyPI packaging — `pip install` + `lla` CLI entry point
-tests/                  315 unit + integration tests
+tests/                  336 unit + integration tests
 ```
 
-33,402 lines across 101 Python files and 53 features. Includes 315 unit tests.
+33,951 lines across 103 Python files and 55 features. Includes 336 unit tests.
 
 ## AI Providers
 
@@ -545,7 +548,7 @@ Extension points: ATS handlers, job platforms, resume templates, role archetypes
 ## Testing
 
 ```bash
-# Run all 315 tests
+# Run all 336 tests
 python -m unittest discover -s tests -v
 
 # Run specific test module
@@ -553,7 +556,7 @@ python -m unittest tests.test_state -v
 python -m unittest tests.test_salary_intel -v
 ```
 
-Tests cover: State class (48 tables, CRUD, migration, CSV export), match scoring (JSON parsing, bounds, thresholds), salary parsing (10+ currencies), dedup engine (fingerprinting, cross-platform matching), apply timing (freshness scoring, queue reordering), JD change tracking (snapshot capture, change detection), and config validation (missing sections, conflicts, numeric bounds).
+Tests cover: State class (49 tables, CRUD, migration, CSV export), match scoring (JSON parsing, bounds, thresholds), salary parsing (10+ currencies), dedup engine (fingerprinting, cross-platform matching), apply timing (freshness scoring, queue reordering), JD change tracking (snapshot capture, change detection), and config validation (missing sections, conflicts, numeric bounds).
 
 ## Production Hardening
 

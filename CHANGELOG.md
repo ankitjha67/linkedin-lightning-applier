@@ -1,6 +1,29 @@
 # Changelog
 
-## v2.9.0 — Screener Gate, LaTeX Docs & Application Craftsmanship
+## v2.9.0 — Screener Gate, LaTeX Docs, Answer RAG & Application Craftsmanship
+
+### Added (Answer RAG, any-job-board, more LLMs)
+- **Semantic Answer Memory (RAG)** (`answer_rag.py`, wired into
+  `AIAnswerer.answer()`) — remembers every form answer; a semantically-similar
+  question is answered straight from memory with **zero LLM tokens**
+  (options-aware: only if the stored answer fits the offered choices), and
+  near-matches are injected into the prompt so answers stay consistent.
+  Pure-Python TF-IDF cosine — no numpy/embeddings, works offline with any
+  provider. New `answer_rag` SQLite table (tables 48 → 49) and `rag:` config
+  block (`reuse_threshold` 0.85, `context_threshold` 0.50). Includes a
+  regression fix: "us" is not a stopword, so a UK visa answer is never reused
+  for a US visa question.
+- **Any-job-board generic apply** — URLs matching no known ATS now fall back to
+  the generic handler (`external_apply.allow_generic_fallback`, default true)
+  which sweeps the form and can **register/sign in** using shared
+  `ats_accounts.generic` credentials. Wired into the run loop and the batch
+  applier.
+- **3 new LLM providers**: `xai` (Grok), `mistral`, and `custom` — ANY
+  OpenAI-compatible endpoint (vLLM, llama.cpp server, LocalAI) via
+  `ai.base_url` with no API key required for local servers. Env keys:
+  `XAI_API_KEY`/`GROK_API_KEY`, `MISTRAL_API_KEY`, `CUSTOM_API_KEY`/`LLM_API_KEY`.
+  13 providers total.
+- +21 tests (`tests/test_answer_rag.py`). Suite 315 → 336.
 
 ### Fixed (stale-data sweep)
 - **`companies.json`: 9 of 30 entries were dead** (404 on their ATS API —
