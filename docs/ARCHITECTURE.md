@@ -50,6 +50,12 @@ Match Scoring (AI scores 0-100%)  -----> match_scores table
 Resume Tailoring (AI generates custom PDF)  -----> data/tailored_resumes/
     |
     v
+Screener Gate (optional: simulate employer-side AI screen; block/warn below threshold)
+    |  SKIP if blocked (screener.gate_in_run + gate: block)
+    v
+LaTeX Docs (optional: typeset moderncv CV; compiled PDF becomes the upload resume)
+    |
+    v
 Apply: Easy Apply (LinkedIn) OR External ATS (12 platforms via ats_handlers/)
     |
     |--- SUCCESS ---+
@@ -116,6 +122,15 @@ main.py
   ├── activity_sim.py   (depends on: selenium)
   ├── external_apply.py (depends on: ai.py, selenium, ats_handlers/)
   │     └── ats_handlers/  (12 ATS handlers: base + generic shapes + registry)
+  ├── apply_urls.py     (standalone batch apply; depends on: external_apply, linkedin.create_browser, state)
+  ├── application_docs.py (orchestrator; depends on: latex_docs, ats_pdf_check, doc_reviewer)
+  │     ├── latex_docs.py      (moderncv render + compile; optional: lualatex/xelatex/pdflatex)
+  │     ├── ats_pdf_check.py   (text-layer + keyword coverage; optional: pdftotext/pdfminer)
+  │     ├── relevance_cutter.py (pure logic)
+  │     └── doc_reviewer.py    (depends on: ai.py)
+  ├── screener_sim.py   (employer-side screen simulation + gate; depends on: ai.py)
+  ├── github_enrich.py  (GitHub repo classification/ranking; optional: requests)
+  ├── profile_setup.py  (documents/ folder → profile text; optional: pdftotext/pdfminer)
   ├── recruiter_messenger.py (depends on: ai.py, state.py, selenium)
   ├── alerts.py         (optional: requests)
   ├── dashboard.py      (depends on: state.py, optional: flask)
@@ -182,7 +197,7 @@ apply_url ──> detect_ats() ──> get_handler() ──> handler.apply(drive
 
 ## Database Schema
 
-SQLite database at `data/state.db` with 48 tables:
+SQLite database at `data/state.db` with 49 tables:
 
 ### Core Tables
 

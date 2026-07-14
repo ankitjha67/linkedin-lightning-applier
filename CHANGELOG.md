@@ -1,6 +1,59 @@
 # Changelog
 
-## Unreleased
+## v2.9.0 — Screener Gate, LaTeX Docs, Answer RAG & Application Craftsmanship
+
+### Added (work authorization, Answer RAG, any-job-board, more LLMs)
+- **Country-aware work authorization** (`work_auth.py` + `work_authorization:`
+  config) — "Are you authorized to work?" / "Do you require sponsorship?" is
+  now derived from the JOB's country vs your citizenship + visas held, instead
+  of one global answer. Applying to a country not covered automatically answers
+  authorized: No / sponsorship: Yes; a held visa (e.g. UK Skilled Worker) flips
+  only that country. Country comes from the question text first, else the job
+  location (aliases + major-hub city map; ambiguous codes like "US"/"IN" only
+  match uppercase). Wired ahead of the exact cache, RAG, and the global keyword
+  answers in all three answering layers (AIAnswerer, ATS handlers, LinkedIn
+  Easy Apply) — and recognized questions are never cached or RAG-saved, so an
+  answer can never leak across borders. Options-aware (fits "No, I do not
+  require sponsorship"-style choices; refuses options that can't express the
+  truth). Falls back to legacy application.authorized_to_work/require_visa when
+  unconfigured. +21 tests (tests/test_work_auth.py). Suite 336 → 357.
+- **Semantic Answer Memory (RAG)** (`answer_rag.py`, wired into
+  `AIAnswerer.answer()`) — remembers every form answer; a semantically-similar
+  question is answered straight from memory with **zero LLM tokens**
+  (options-aware: only if the stored answer fits the offered choices), and
+  near-matches are injected into the prompt so answers stay consistent.
+  Pure-Python TF-IDF cosine — no numpy/embeddings, works offline with any
+  provider. New `answer_rag` SQLite table (tables 48 → 49) and `rag:` config
+  block (`reuse_threshold` 0.85, `context_threshold` 0.50). Includes a
+  regression fix: "us" is not a stopword, so a UK visa answer is never reused
+  for a US visa question.
+- **Any-job-board generic apply** — URLs matching no known ATS now fall back to
+  the generic handler (`external_apply.allow_generic_fallback`, default true)
+  which sweeps the form and can **register/sign in** using shared
+  `ats_accounts.generic` credentials. Wired into the run loop and the batch
+  applier.
+- **3 new LLM providers**: `xai` (Grok), `mistral`, and `custom` — ANY
+  OpenAI-compatible endpoint (vLLM, llama.cpp server, LocalAI) via
+  `ai.base_url` with no API key required for local servers. Env keys:
+  `XAI_API_KEY`/`GROK_API_KEY`, `MISTRAL_API_KEY`, `CUSTOM_API_KEY`/`LLM_API_KEY`.
+  13 providers total.
+- +21 tests (`tests/test_answer_rag.py`).
+
+### Fixed (stale-data sweep)
+- **`companies.json`: 9 of 30 entries were dead** (404 on their ATS API —
+  companies moved platforms). Fixed OpenAI, Notion, and Plaid (all migrated
+  Greenhouse → Ashby) and replaced Mistral AI, Wise, Klarna, HashiCorp, Canva,
+  and Retool (moved to proprietary portals the free-API scanner can't read)
+  with verified-live Greenhouse companies: Monzo, GoCardless, Adyen, Affirm,
+  Marqeta, Mercury. All 30 entries re-verified 200 against live APIs.
+- **Model defaults refreshed** in `ai.py`: `anthropic` → `claude-sonnet-5`
+  (was `claude-sonnet-4-6`), `groq` → `llama-3.3-70b-versatile` (the 3.1-70b
+  model was decommissioned by Groq).
+- Docs stats reconciled with reality: 33,402 lines / 101 Python files /
+  53 features (counted from the README feature list) / 315 tests / 25 CLI
+  commands. README "4-model fallback chain" → the chain is config-driven.
+- CLI header docstring and README module listing now include all new modules
+  and commands (`apply`, `docs`, `screen`, `test-llm`).
 
 ### Added
 - **Screener Simulator** (`screener_sim.py` + `lla screen`) — see your resume

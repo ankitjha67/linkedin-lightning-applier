@@ -657,7 +657,8 @@ def process_page(drv, cfg: dict, st: State, sched: dict,
 
             if easy_apply_clicked:
                 # Pass tailored resume through job_context
-                jc = {"title": title, "company": company, "description": desc[:500]}
+                jc = {"title": title, "company": company, "description": desc[:500],
+                      "location": location}
                 if tailored_resume:
                     jc["tailored_resume_path"] = tailored_resume
 

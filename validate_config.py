@@ -18,7 +18,8 @@ from pathlib import Path
 log = logging.getLogger("lla.config_validator")
 
 VALID_AI_PROVIDERS = {"openai", "anthropic", "gemini", "deepseek", "groq",
-                       "together", "ollama", "lmstudio", "openrouter", "claude_cli"}
+                       "together", "ollama", "lmstudio", "openrouter", "claude_cli",
+                       "xai", "mistral", "custom"}
 
 REQUIRED_SECTIONS = ["search", "personal"]
 

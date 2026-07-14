@@ -35,6 +35,10 @@ class ExternalApplier:
         self.enabled = ea_cfg.get("enabled", False)
         # Default to every platform we can drive; a config list narrows it.
         self.supported_ats = set(ea_cfg.get("supported_ats", ALL_ATS))
+        # ANY job board: when the URL matches no known ATS, fall back to the
+        # generic best-effort handler (single-page sweep + optional registration
+        # via ats_accounts.generic) instead of refusing.
+        self.allow_generic_fallback = ea_cfg.get("allow_generic_fallback", True)
         self.max_per_cycle = ea_cfg.get("max_external_per_cycle", 5)
         self.timeout = ea_cfg.get("timeout_seconds", 120)
         self.applied_this_cycle = 0
@@ -68,8 +72,11 @@ class ExternalApplier:
 
         ats = self.detect_ats(apply_url)
         if not ats:
-            log.info(f"   Unsupported ATS: {apply_url[:80]}")
-            return False
+            if not self.allow_generic_fallback:
+                log.info(f"   Unsupported ATS: {apply_url[:80]}")
+                return False
+            ats = "generic"
+            log.info(f"   Unknown board — trying generic handler: {apply_url[:80]}")
 
         handler = get_handler(ats, self.ai, self.cfg)
         if handler is None:

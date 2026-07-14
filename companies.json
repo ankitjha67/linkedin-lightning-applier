@@ -1,32 +1,242 @@
 [
-  {"name": "Stripe", "careers_url": "https://stripe.com/jobs/search", "search_domain": "stripe.com", "ats": "greenhouse", "location": "Remote / San Francisco, CA", "region": "Remote"},
-  {"name": "Anthropic", "careers_url": "https://www.anthropic.com/careers", "search_domain": "anthropic.com", "ats": "greenhouse", "location": "San Francisco, CA", "region": "US"},
-  {"name": "OpenAI", "careers_url": "https://openai.com/careers/search", "search_domain": "openai.com", "ats": "greenhouse", "location": "San Francisco, CA", "region": "US"},
-  {"name": "Datadog", "careers_url": "https://careers.datadoghq.com/all-jobs/", "search_domain": "datadoghq.com", "ats": "greenhouse", "location": "Remote / New York, NY", "region": "Remote"},
-  {"name": "Cloudflare", "careers_url": "https://www.cloudflare.com/careers/jobs/", "search_domain": "cloudflare.com", "ats": "greenhouse", "location": "Remote / Austin, TX", "region": "Remote"},
-  {"name": "Mistral AI", "careers_url": "https://mistral.ai/careers/", "search_domain": "mistral.ai", "ats": "lever", "location": "Paris, France", "region": "EU"},
-  {"name": "Hugging Face", "careers_url": "https://apply.workable.com/huggingface/", "search_domain": "huggingface.co", "ats": "workable", "location": "Remote (EU/US)", "region": "Remote"},
-  {"name": "Revolut", "careers_url": "https://www.revolut.com/careers/", "search_domain": "revolut.com", "ats": "smartrecruiters", "location": "London, UK", "region": "EU"},
-  {"name": "Monzo", "careers_url": "https://monzo.com/careers/", "search_domain": "monzo.com", "ats": "greenhouse", "location": "London, UK", "region": "EU"},
-  {"name": "Wise", "careers_url": "https://www.wise.jobs/", "search_domain": "wise.com", "ats": "greenhouse", "location": "London, UK", "region": "EU"},
-  {"name": "Spotify", "careers_url": "https://www.lifeatspotify.com/jobs", "search_domain": "spotify.com", "ats": "lever", "location": "Stockholm / Remote", "region": "EU"},
-  {"name": "Klarna", "careers_url": "https://www.klarna.com/careers/", "search_domain": "klarna.com", "ats": "greenhouse", "location": "Stockholm, Sweden", "region": "EU"},
-  {"name": "Datadog", "careers_url": "https://careers.datadoghq.com/", "search_domain": "datadoghq.com", "ats": "greenhouse", "location": "Remote", "region": "Remote"},
-  {"name": "GitLab", "careers_url": "https://about.gitlab.com/jobs/", "search_domain": "gitlab.com", "ats": "greenhouse", "location": "Remote (Global)", "region": "Remote"},
-  {"name": "Elastic", "careers_url": "https://www.elastic.co/careers/", "search_domain": "elastic.co", "ats": "greenhouse", "location": "Remote (Global)", "region": "Remote"},
-  {"name": "HashiCorp", "careers_url": "https://www.hashicorp.com/careers/open-positions", "search_domain": "hashicorp.com", "ats": "greenhouse", "location": "Remote", "region": "Remote"},
-  {"name": "Snowflake", "careers_url": "https://careers.snowflake.com/us/en", "search_domain": "snowflake.com", "ats": "workday", "location": "Remote / San Mateo, CA", "region": "Remote"},
-  {"name": "Databricks", "careers_url": "https://www.databricks.com/company/careers/open-positions", "search_domain": "databricks.com", "ats": "greenhouse", "location": "Remote / San Francisco, CA", "region": "Remote"},
-  {"name": "Canva", "careers_url": "https://www.lifeatcanva.com/en/jobs/", "search_domain": "canva.com", "ats": "lever", "location": "Sydney, Australia", "region": "APAC"},
-  {"name": "Atlassian", "careers_url": "https://www.atlassian.com/company/careers/all-jobs", "search_domain": "atlassian.com", "ats": "lever", "location": "Sydney / Remote", "region": "APAC"},
-  {"name": "Xero", "careers_url": "https://www.xero.com/about/careers/", "search_domain": "xero.com", "ats": "smartrecruiters", "location": "Wellington, NZ", "region": "APAC"},
-  {"name": "Vercel", "careers_url": "https://vercel.com/careers", "search_domain": "vercel.com", "ats": "greenhouse", "location": "Remote", "region": "Remote"},
-  {"name": "Notion", "careers_url": "https://www.notion.so/careers", "search_domain": "notion.so", "ats": "greenhouse", "location": "San Francisco, CA", "region": "US"},
-  {"name": "Figma", "careers_url": "https://www.figma.com/careers/", "search_domain": "figma.com", "ats": "greenhouse", "location": "San Francisco / Remote", "region": "Remote"},
-  {"name": "Airtable", "careers_url": "https://airtable.com/careers", "search_domain": "airtable.com", "ats": "greenhouse", "location": "San Francisco, CA", "region": "US"},
-  {"name": "Retool", "careers_url": "https://retool.com/careers", "search_domain": "retool.com", "ats": "greenhouse", "location": "San Francisco, CA", "region": "US"},
-  {"name": "Ramp", "careers_url": "https://ramp.com/careers", "search_domain": "ramp.com", "ats": "ashby", "location": "New York, NY", "region": "US"},
-  {"name": "Plaid", "careers_url": "https://plaid.com/careers/openings/", "search_domain": "plaid.com", "ats": "greenhouse", "location": "Remote / San Francisco", "region": "Remote"},
-  {"name": "Coinbase", "careers_url": "https://www.coinbase.com/careers/positions", "search_domain": "coinbase.com", "ats": "greenhouse", "location": "Remote", "region": "Remote"},
-  {"name": "Twilio", "careers_url": "https://www.twilio.com/en-us/company/jobs", "search_domain": "twilio.com", "ats": "greenhouse", "location": "Remote", "region": "Remote"}
+  {
+    "name": "Stripe",
+    "careers_url": "https://stripe.com/jobs/search",
+    "search_domain": "stripe.com",
+    "ats": "greenhouse",
+    "location": "Remote / San Francisco, CA",
+    "region": "Remote"
+  },
+  {
+    "name": "Anthropic",
+    "careers_url": "https://www.anthropic.com/careers",
+    "search_domain": "anthropic.com",
+    "ats": "greenhouse",
+    "location": "San Francisco, CA",
+    "region": "US"
+  },
+  {
+    "name": "OpenAI",
+    "careers_url": "https://openai.com/careers/search",
+    "search_domain": "openai.com",
+    "ats": "ashby",
+    "location": "San Francisco, CA",
+    "region": "US"
+  },
+  {
+    "name": "Datadog",
+    "careers_url": "https://careers.datadoghq.com/all-jobs/",
+    "search_domain": "datadoghq.com",
+    "ats": "greenhouse",
+    "location": "Remote / New York, NY",
+    "region": "Remote"
+  },
+  {
+    "name": "Cloudflare",
+    "careers_url": "https://www.cloudflare.com/careers/jobs/",
+    "search_domain": "cloudflare.com",
+    "ats": "greenhouse",
+    "location": "Remote / Austin, TX",
+    "region": "Remote"
+  },
+  {
+    "name": "Monzo",
+    "careers_url": "https://monzo.com/careers",
+    "search_domain": "monzo.com",
+    "ats": "greenhouse",
+    "location": "London, UK",
+    "region": "EU"
+  },
+  {
+    "name": "Hugging Face",
+    "careers_url": "https://apply.workable.com/huggingface/",
+    "search_domain": "huggingface.co",
+    "ats": "workable",
+    "location": "Remote (EU/US)",
+    "region": "Remote"
+  },
+  {
+    "name": "Revolut",
+    "careers_url": "https://www.revolut.com/careers/",
+    "search_domain": "revolut.com",
+    "ats": "smartrecruiters",
+    "location": "London, UK",
+    "region": "EU"
+  },
+  {
+    "name": "Monzo",
+    "careers_url": "https://monzo.com/careers/",
+    "search_domain": "monzo.com",
+    "ats": "greenhouse",
+    "location": "London, UK",
+    "region": "EU"
+  },
+  {
+    "name": "GoCardless",
+    "careers_url": "https://gocardless.com/careers/",
+    "search_domain": "gocardless.com",
+    "ats": "greenhouse",
+    "location": "London, UK",
+    "region": "EU"
+  },
+  {
+    "name": "Spotify",
+    "careers_url": "https://www.lifeatspotify.com/jobs",
+    "search_domain": "spotify.com",
+    "ats": "lever",
+    "location": "Stockholm / Remote",
+    "region": "EU"
+  },
+  {
+    "name": "Adyen",
+    "careers_url": "https://careers.adyen.com/",
+    "search_domain": "adyen.com",
+    "ats": "greenhouse",
+    "location": "Amsterdam, Netherlands",
+    "region": "EU"
+  },
+  {
+    "name": "Datadog",
+    "careers_url": "https://careers.datadoghq.com/",
+    "search_domain": "datadoghq.com",
+    "ats": "greenhouse",
+    "location": "Remote",
+    "region": "Remote"
+  },
+  {
+    "name": "GitLab",
+    "careers_url": "https://about.gitlab.com/jobs/",
+    "search_domain": "gitlab.com",
+    "ats": "greenhouse",
+    "location": "Remote (Global)",
+    "region": "Remote"
+  },
+  {
+    "name": "Elastic",
+    "careers_url": "https://www.elastic.co/careers/",
+    "search_domain": "elastic.co",
+    "ats": "greenhouse",
+    "location": "Remote (Global)",
+    "region": "Remote"
+  },
+  {
+    "name": "Affirm",
+    "careers_url": "https://www.affirm.com/careers",
+    "search_domain": "affirm.com",
+    "ats": "greenhouse",
+    "location": "Remote",
+    "region": "Remote"
+  },
+  {
+    "name": "Snowflake",
+    "careers_url": "https://careers.snowflake.com/us/en",
+    "search_domain": "snowflake.com",
+    "ats": "workday",
+    "location": "Remote / San Mateo, CA",
+    "region": "Remote"
+  },
+  {
+    "name": "Databricks",
+    "careers_url": "https://www.databricks.com/company/careers/open-positions",
+    "search_domain": "databricks.com",
+    "ats": "greenhouse",
+    "location": "Remote / San Francisco, CA",
+    "region": "Remote"
+  },
+  {
+    "name": "Marqeta",
+    "careers_url": "https://www.marqeta.com/company/careers",
+    "search_domain": "marqeta.com",
+    "ats": "greenhouse",
+    "location": "Remote, USA",
+    "region": "US"
+  },
+  {
+    "name": "Atlassian",
+    "careers_url": "https://www.atlassian.com/company/careers/all-jobs",
+    "search_domain": "atlassian.com",
+    "ats": "lever",
+    "location": "Sydney / Remote",
+    "region": "APAC"
+  },
+  {
+    "name": "Xero",
+    "careers_url": "https://www.xero.com/about/careers/",
+    "search_domain": "xero.com",
+    "ats": "smartrecruiters",
+    "location": "Wellington, NZ",
+    "region": "APAC"
+  },
+  {
+    "name": "Vercel",
+    "careers_url": "https://vercel.com/careers",
+    "search_domain": "vercel.com",
+    "ats": "greenhouse",
+    "location": "Remote",
+    "region": "Remote"
+  },
+  {
+    "name": "Notion",
+    "careers_url": "https://www.notion.so/careers",
+    "search_domain": "notion.so",
+    "ats": "ashby",
+    "location": "San Francisco, CA",
+    "region": "US"
+  },
+  {
+    "name": "Figma",
+    "careers_url": "https://www.figma.com/careers/",
+    "search_domain": "figma.com",
+    "ats": "greenhouse",
+    "location": "San Francisco / Remote",
+    "region": "Remote"
+  },
+  {
+    "name": "Airtable",
+    "careers_url": "https://airtable.com/careers",
+    "search_domain": "airtable.com",
+    "ats": "greenhouse",
+    "location": "San Francisco, CA",
+    "region": "US"
+  },
+  {
+    "name": "Mercury",
+    "careers_url": "https://mercury.com/jobs",
+    "search_domain": "mercury.com",
+    "ats": "greenhouse",
+    "location": "San Francisco / Remote",
+    "region": "US"
+  },
+  {
+    "name": "Ramp",
+    "careers_url": "https://ramp.com/careers",
+    "search_domain": "ramp.com",
+    "ats": "ashby",
+    "location": "New York, NY",
+    "region": "US"
+  },
+  {
+    "name": "Plaid",
+    "careers_url": "https://plaid.com/careers/openings/",
+    "search_domain": "plaid.com",
+    "ats": "ashby",
+    "location": "Remote / San Francisco",
+    "region": "Remote"
+  },
+  {
+    "name": "Coinbase",
+    "careers_url": "https://www.coinbase.com/careers/positions",
+    "search_domain": "coinbase.com",
+    "ats": "greenhouse",
+    "location": "Remote",
+    "region": "Remote"
+  },
+  {
+    "name": "Twilio",
+    "careers_url": "https://www.twilio.com/en-us/company/jobs",
+    "search_domain": "twilio.com",
+    "ats": "greenhouse",
+    "location": "Remote",
+    "region": "Remote"
+  }
 ]

@@ -121,7 +121,31 @@ class MultiStepHandler(AccountMixin, ATSHandler):
         return self.run_multistep(driver, job_context, resume_path)
 
 
-class GenericHandler(SinglePageHandler):
-    """Fallback for an unknown ATS: treat it as a single-page form."""
+class GenericHandler(AccountMixin, SinglePageHandler):
+    """Best-effort fallback for ANY unknown job board.
+
+    Treats the page as a single-page form; if a login/registration wall is
+    showing instead, attempts to register or sign in with the shared
+    ``external_apply.ats_accounts.generic`` credentials first (falling back to
+    the personal email). This is what makes "any job board" work: no site-
+    specific selectors, just the shared sweep + account primitives.
+    """
 
     name = "generic"
+    account_key = "generic"
+
+    def apply(self, driver, job_context: dict, resume_path: str = "") -> bool:
+        import time
+        time.sleep(2)
+        # Some boards gate the form behind an Apply button first.
+        if self.click_button(driver, labels=["apply", "apply now",
+                                             "apply for this job",
+                                             "start application"]):
+            time.sleep(2)
+        # Registration/login wall? Try to get past it (best effort, non-fatal).
+        if self._auth_present(driver):
+            if not self.ensure_account(driver):
+                log.info("   generic: login wall not passable — skipping")
+                return False
+            time.sleep(1.5)
+        return super().apply(driver, job_context, resume_path)

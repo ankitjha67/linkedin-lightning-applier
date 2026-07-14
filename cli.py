@@ -1,19 +1,23 @@
 #!/usr/bin/env python3
 """LinkedIn Lightning Applier -- Command Line Interface.
 
-Provides subcommands for every major feature: run the bot, evaluate jobs,
-score matches, compare offers, interview prep, story bank, forensics,
-market intelligence, career simulation, ghost prediction, SLA tracking,
-skill gap analysis, salary benchmarking, portfolio evaluation, training
-evaluation, pipeline management, dashboard, config validation, data
-export, session stats, and first-time setup.
+Provides subcommands for every major feature: run the bot, batch external
+apply, tailored LaTeX documents, employer-side screener simulation, LLM
+connectivity testing, evaluate jobs, score matches, compare offers,
+interview prep, story bank, forensics, market intelligence, career
+simulation, ghost prediction, SLA tracking, skill gap analysis, salary
+benchmarking, portfolio evaluation, training evaluation, pipeline
+management, dashboard, config validation, data export, session stats,
+and first-time setup.
 
 Usage:
     python cli.py run                  # Start the main bot
+    python cli.py apply --file urls.txt  # Batch-apply to ATS URLs (no LinkedIn)
+    python cli.py docs --jd-file jd.txt  # Tailored LaTeX CV + cover letter
+    python cli.py screen --jd-file jd.txt  # Employer-side screener simulation
+    python cli.py test-llm             # Verify the configured LLM works
     python cli.py stats                # Show session statistics
     python cli.py validate-config      # Validate config.yaml
-    python cli.py skill-gaps           # Show skill gap report
-    python cli.py salary --role "..."  # Salary benchmark
     python cli.py setup                # Interactive setup wizard
 """
 

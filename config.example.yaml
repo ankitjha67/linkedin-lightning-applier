@@ -62,6 +62,25 @@ search:
   randomize_order: true
 
 # ═══════════════════════════════════════════════════════════════
+# WORK AUTHORIZATION — per-country truth for visa/authorization questions
+# "Are you authorized to work in X?" / "Do you require sponsorship?" is derived
+# from the JOB's country vs your citizenship + visas held — not from one global
+# answer. Applying to a country not listed below automatically answers
+# authorized: No / sponsorship required: Yes. Answered deterministically
+# (zero LLM tokens) and NEVER cached across countries.
+# ═══════════════════════════════════════════════════════════════
+work_authorization:
+  citizenship:
+    - "India"                    # countries where you can work by right
+  visas: []                      # work authorizations you hold, e.g.:
+  #  - country: "United Kingdom"
+  #    type: "Skilled Worker"    # optional, informational
+  #  - country: "Singapore"
+  #    type: "Employment Pass"
+  # Leave both empty to fall back to the legacy application.authorized_to_work /
+  # application.require_visa single answers.
+
+# ═══════════════════════════════════════════════════════════════
 # APPLICATION DEFAULTS
 # ═══════════════════════════════════════════════════════════════
 application:
@@ -271,8 +290,11 @@ export:
   visa_sponsors_csv: "visa_sponsors.csv"
 
 # ═══════════════════════════════════════════════════════════════
-# AI — choose a provider. Examples: gemini (2.5), openrouter (free),
-# claude_cli (no key), ollama/lmstudio (local). See notes at bottom.
+# AI — choose a provider: openai, anthropic, gemini, deepseek, groq, together,
+# openrouter (free chain), xai (Grok), mistral, claude_cli (no key),
+# ollama/lmstudio (local), or custom (ANY OpenAI-compatible endpoint — vLLM,
+# llama.cpp server, LocalAI — set base_url; api_key optional for local).
+# Keys read from env vars when api_key is blank. See notes at bottom.
 # ═══════════════════════════════════════════════════════════════
 ai:
   enabled: true
@@ -338,6 +360,19 @@ recruiter_messaging:
   skip_if_no_profile_url: true
 
 # ═══════════════════════════════════════════════════════════════
+# ANSWER RAG — semantic memory for form answers (saves tokens)
+# Remembers every question/answer; a semantically-similar question is answered
+# straight from memory (zero LLM tokens), and near-matches are injected into
+# the prompt as context so answers stay consistent. Pure-Python TF-IDF — works
+# offline with any provider, including local models.
+# ═══════════════════════════════════════════════════════════════
+rag:
+  enabled: true
+  reuse_threshold: 0.85         # similarity ≥ this → reuse stored answer directly
+  context_threshold: 0.50       # similarity ≥ this → inject as prompt context
+  max_context: 3                # max similar Q&As injected per prompt
+
+# ═══════════════════════════════════════════════════════════════
 # EXTERNAL APPLY — Fill ATS forms on 12 platforms
 # ═══════════════════════════════════════════════════════════════
 external_apply:
@@ -362,6 +397,10 @@ external_apply:
   timeout_seconds: 120
   max_wizard_pages: 12          # safety cap on multi-step wizard loops
   slow_mo_seconds: 0.0          # add a pause after each field (debugging)
+  # ANY job board: when a URL matches none of the platforms above, fall back to
+  # the best-effort generic handler (form sweep + registration via
+  # ats_accounts.generic below) instead of skipping. Set false to disable.
+  allow_generic_fallback: true
 
   # Credentials for ATSes that force account creation before applying.
   # The bot reuses one email+password across every tenant of a platform:
@@ -384,6 +423,11 @@ external_apply:
       email: ""
       password: ""
     adp:
+      email: ""
+      password: ""
+    # Shared credentials the GENERIC handler uses to register/sign in on any
+    # unknown job board (allow_generic_fallback). email blank → personal.email.
+    generic:
       email: ""
       password: ""
 
@@ -891,7 +935,7 @@ careers_scanner:
 #     api_key: "sk-or-..."        # Free key from openrouter.ai
 #     openrouter_fallback_models:  # Free chain — auto-falls-back on rate limit
 #       - "meta-llama/llama-3.3-70b-instruct:free"
-#       - "google/gemma-2-9b-it:free"
+#       - "nvidia/nemotron-nano-9b-v2:free"
 #
 # Example claude_cli config (uses the `claude` binary, no API key):
 #   ai:
