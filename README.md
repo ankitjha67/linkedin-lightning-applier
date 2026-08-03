@@ -73,7 +73,8 @@ The bot runs in a continuous loop. Every cycle:
 - **ATS CV Template Engine** (`cv_template_engine.py`) — ATS-optimized HTML→PDF CV generation with keyword injection from JD.
 - **Pipeline State Machine** (`pipeline_manager.py`) — Formal lifecycle states (discovered → evaluated → applied → interviewing → offer) with enforced transitions.
 
-### Application Craftsmanship (10 — new in v2.9)
+### Application Craftsmanship (11 — new in v2.9)
+- **Browser Extension (24/7 in-browser autopilot)** (`browser_extension/`) — Chrome/Edge MV3 companion that runs in your **real logged-in browser** (no chromedriver): alarm-driven board scanning, LLM relevance scoring with **NVIDIA NIM / frontier / local Ollama-LM Studio** provider placeholders, per-country work-auth answers, learned-answer reuse, resume auto-attach, fill-only or auto-submit.
 - **Environment Doctor** (`env_doctor.py` / `lla doctor --fix`) — Auto-detects your Python and **installed Chrome version** (Windows registry / macOS / Linux), installs missing packages one-by-one, and reports optional tools. Browser launch self-heals a Chrome↔driver mismatch (re-pins, then auto-upgrades the driver) so it never dies on a version error.
 - **Country-Aware Work Authorization** (`work_auth.py`) — "Authorized to work?" / "Need sponsorship?" answered from the JOB's country vs your citizenship + visas held. Countries you're not authorized in automatically answer No / sponsorship-required. Deterministic, zero tokens, and never cached across borders.
 - **Batch External Apply** (`apply_urls.py`) — Submit ATS applications from a plain URL list (txt/CSV/JSON) in a real browser, **no LinkedIn required**. URL-dedup against SQLite; `--dry-run` previews ATS detection.
@@ -298,10 +299,10 @@ tools_layer.py          Protocol-agnostic tool layer (MCP/adapter foundation)
 careers_scanner.py      Curated company careers-page scanner (Greenhouse/Lever/Ashby)
 companies.json          Curated target-company database (30+ companies)
 pyproject.toml          PyPI packaging — `pip install` + `lla` CLI entry point
-tests/                  372 unit + integration tests
+tests/                  386 unit + integration tests
 ```
 
-35,038 lines across 107 Python files and 57 features. Includes 372 unit tests.
+35,166 lines across 108 Python files and 58 features. Includes 386 unit tests.
 
 ## AI Providers
 
@@ -550,7 +551,7 @@ Extension points: ATS handlers, job platforms, resume templates, role archetypes
 ## Testing
 
 ```bash
-# Run all 372 tests
+# Run all 386 tests
 python -m unittest discover -s tests -v
 
 # Run specific test module

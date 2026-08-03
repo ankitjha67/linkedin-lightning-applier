@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  :root { color-scheme: light dark; }
+  body { font: 13px/1.5 system-ui, sans-serif; width: 280px; margin: 0; padding: 14px; }
+  h1 { font-size: 15px; margin: 0 0 10px; }
+  .stat { display: flex; justify-content: space-between; padding: 3px 0; }
+  .stat b { font-variant-numeric: tabular-nums; }
+  .switch { display: flex; align-items: center; justify-content: space-between;
+    padding: 9px 0; border-top: 1px solid #8884; border-bottom: 1px solid #8884; margin: 10px 0; }
+  button { width: 100%; padding: 8px; margin-top: 8px; border-radius: 7px;
+    border: 1px solid #8886; background: transparent; color: inherit; cursor: pointer; font: inherit; }
+  button.primary { background: #2563eb; color: #fff; border: none; font-weight: 600; }
+  .muted { font-size: 11px; opacity: .6; margin-top: 8px; }
+</style>
+</head>
+<body>
+<h1>⚡ Lightning Applier</h1>
+<div class="switch">
+  <span><b>24/7 autopilot</b></span>
+  <input type="checkbox" id="enabled">
+</div>
+<div class="stat"><span>Applied today</span><b id="today">–</b></div>
+<div class="stat"><span>Applied total</span><b id="total">–</b></div>
+<div class="stat"><span>Answers learned</span><b id="answers">–</b></div>
+<div class="stat"><span>Last scan</span><b id="lastScan">–</b></div>
+<button class="primary" id="runNow">Scan now</button>
+<button id="fillPage">Fill this page</button>
+<button id="openOptions">Settings</button>
+<div class="muted" id="mode"></div>
+<script src="popup.js"></script>
+</body>
+</html>

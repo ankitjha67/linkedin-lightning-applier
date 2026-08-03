@@ -1,0 +1,43 @@
+{
+  "manifest_version": 3,
+  "name": "Lightning Applier",
+  "version": "1.0.0",
+  "description": "24/7 job-application autopilot: scans job boards on a schedule, scores relevance with your LLM (NVIDIA NIM, frontier APIs, or local Ollama/LM Studio), and auto-fills ATS applications in your real browser session.",
+  "permissions": ["storage", "alarms", "tabs", "scripting", "notifications"],
+  "host_permissions": ["<all_urls>"],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Lightning Applier",
+    "default_icon": { "16": "icons/icon16.png", "48": "icons/icon48.png" }
+  },
+  "options_page": "options.html",
+  "content_scripts": [
+    {
+      "matches": [
+        "https://boards.greenhouse.io/*",
+        "https://job-boards.greenhouse.io/*",
+        "https://jobs.lever.co/*",
+        "https://jobs.ashbyhq.com/*",
+        "https://*.myworkdayjobs.com/*",
+        "https://jobs.smartrecruiters.com/*",
+        "https://apply.workable.com/*",
+        "https://jobs.jobvite.com/*",
+        "https://*.bamboohr.com/*",
+        "https://*.icims.com/*",
+        "https://*.taleo.net/*"
+      ],
+      "js": ["content/filler.js"],
+      "all_frames": true,
+      "run_at": "document_idle"
+    }
+  ]
+}
