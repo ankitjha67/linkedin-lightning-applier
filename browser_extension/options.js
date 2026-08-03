@@ -31,14 +31,26 @@ function populateProviders(selected) {
   refreshPlaceholders();
 }
 
+const GROUP_OF = {
+  nvidia: "grpNvidia",
+  openai: "grpFrontier", anthropic: "grpFrontier", gemini: "grpFrontier",
+  openrouter: "grpFrontier", xai: "grpFrontier", mistral: "grpFrontier",
+  groq: "grpFrontier",
+  ollama: "grpLocal", lmstudio: "grpLocal", custom: "grpLocal",
+};
+
 function refreshPlaceholders() {
-  const p = PROVIDERS[$("provider").value];
+  const key = $("provider").value;
+  const p = PROVIDERS[key];
   $("apiKey").placeholder = p.keyPlaceholder;
   $("model").placeholder = p.model;
   $("baseUrl").placeholder = p.baseUrl;
   $("keyHint").textContent = p.needsKey
     ? "Stored only in this browser's extension storage."
     : "Local provider — no API key, nothing leaves your machine.";
+  for (const id of ["grpNvidia", "grpFrontier", "grpLocal"]) {
+    document.getElementById(id)?.classList.toggle("active", GROUP_OF[key] === id);
+  }
 }
 
 async function load() {
@@ -89,5 +101,13 @@ async function saveAll() {
 }
 
 $("provider").addEventListener("change", refreshPlaceholders);
+// Clicking a group chip jumps to that group's first provider.
+const GROUP_FIRST = { grpNvidia: "nvidia", grpFrontier: "openrouter", grpLocal: "ollama" };
+for (const [id, prov] of Object.entries(GROUP_FIRST)) {
+  document.getElementById(id)?.addEventListener("click", () => {
+    $("provider").value = prov;
+    refreshPlaceholders();
+  });
+}
 $("save").addEventListener("click", saveAll);
 load();

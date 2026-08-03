@@ -3,6 +3,7 @@ const $ = (id) => document.getElementById(id);
 async function refresh() {
   const s = await chrome.storage.local.get(null);
   $("enabled").checked = !!s.enabled;
+  document.body.classList.toggle("on", !!s.enabled);
   const today = s.stats?.day === new Date().toISOString().slice(0, 10)
     ? s.stats.appliedToday : 0;
   $("today").textContent = today ?? 0;
@@ -17,6 +18,7 @@ async function refresh() {
 
 $("enabled").addEventListener("change", async (e) => {
   await chrome.storage.local.set({ enabled: e.target.checked });
+  document.body.classList.toggle("on", e.target.checked);
 });
 $("runNow").addEventListener("click", () => {
   chrome.runtime.sendMessage({ type: "RUN_NOW" });

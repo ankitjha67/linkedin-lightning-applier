@@ -4,94 +4,223 @@
 <meta charset="utf-8">
 <title>Lightning Applier — Settings</title>
 <style>
-  :root { color-scheme: light dark; }
-  body { font: 14px/1.5 system-ui, sans-serif; max-width: 760px; margin: 24px auto; padding: 0 16px; }
-  h1 { font-size: 20px; } h2 { font-size: 15px; margin: 26px 0 8px; border-bottom: 1px solid #8884; padding-bottom: 4px; }
-  label { display: block; margin: 10px 0 2px; font-weight: 600; font-size: 12.5px; }
-  input[type=text], input[type=password], input[type=number], select, textarea {
-    width: 100%; padding: 7px 9px; border: 1px solid #8886; border-radius: 6px;
-    background: transparent; color: inherit; box-sizing: border-box; font: inherit;
+  :root {
+    --bg: #0E1116; --panel: #151B24; --panel2: #1B2330; --line: #26303F;
+    --ink: #E9EEF6; --muted: #8B97A9; --volt: #FFC940; --volt-ink: #171207;
+    --live: #3ECF8E;
+    --mono: ui-monospace, "SF Mono", "Cascadia Code", Consolas, monospace;
   }
-  textarea { font-family: ui-monospace, monospace; font-size: 12.5px; }
-  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-  .hint { font-size: 11.5px; opacity: .65; margin-top: 2px; }
-  .pill { display:inline-block; font-size:10.5px; padding:1px 8px; border-radius:99px; border:1px solid #8886; margin-left:6px; vertical-align:middle; }
-  button { margin-top: 20px; padding: 9px 22px; border-radius: 8px; border: none;
-    background: #2563eb; color: #fff; font-weight: 600; cursor: pointer; }
-  #saved { margin-left: 10px; color: #16a34a; font-weight: 600; opacity: 0; transition: opacity .3s; }
-  .check { display:flex; align-items:center; gap:8px; margin-top:10px; font-weight:600; font-size:13px; }
-  .check input { width:auto; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 14px/1.55 "Avenir Next", "Segoe UI", system-ui, sans-serif;
+  }
+  .wrap { max-width: 780px; margin: 0 auto; padding: 0 20px 120px; }
+
+  /* masthead */
+  .mast { display: flex; align-items: center; gap: 12px; padding: 26px 0 20px; }
+  .bolt { width: 34px; height: 34px; border-radius: 9px; flex: none;
+    background: linear-gradient(160deg, #2A3547, #1B2330);
+    border: 1px solid var(--line); display: grid; place-items: center; }
+  .mast h1 { font-size: 15px; margin: 0; letter-spacing: .16em; font-weight: 700; }
+  .mast .sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+  /* section cards */
+  section {
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 14px; padding: 20px 22px 22px; margin-bottom: 16px;
+  }
+  .eyebrow { font-size: 10px; letter-spacing: .18em; text-transform: uppercase;
+    color: var(--volt); font-weight: 700; }
+  section h2 { font-size: 16px; margin: 4px 0 2px; font-weight: 700; }
+  .lede { font-size: 12.5px; color: var(--muted); margin: 0 0 14px; }
+
+  /* provider groups */
+  .groups { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 14px; }
+  .group {
+    border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px;
+    background: var(--panel2); transition: border-color .15s;
+  }
+  .group.active { border-color: var(--volt); }
+  .group .g { font-size: 11px; font-weight: 700; letter-spacing: .08em; }
+  .group .d { font-size: 10.5px; color: var(--muted); margin-top: 2px; }
+  .group.active .g { color: var(--volt); }
+
+  /* form atoms */
+  label { display: block; margin: 12px 0 4px; font-size: 11px; font-weight: 700;
+    letter-spacing: .07em; text-transform: uppercase; color: var(--muted); }
+  input[type=text], input[type=password], input[type=number], select, textarea {
+    width: 100%; padding: 9px 11px; border-radius: 8px; font: inherit;
+    background: var(--panel2); color: var(--ink); border: 1px solid var(--line);
+  }
+  input:focus-visible, select:focus-visible, textarea:focus-visible {
+    outline: 2px solid var(--volt); outline-offset: 1px; border-color: var(--volt);
+  }
+  ::placeholder { color: #5A6678; }
+  textarea, .monofield, input[type=number] { font-family: var(--mono); font-size: 12.5px; }
+  input[type=number] { font-variant-numeric: tabular-nums; }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 0 14px; }
+  .hint { font-size: 11px; color: var(--muted); margin-top: 4px; }
+  input[type=file] { color: var(--muted); font-size: 12px; margin-top: 2px; }
+  input[type=file]::file-selector-button {
+    font: 600 12px "Avenir Next", "Segoe UI", system-ui, sans-serif;
+    padding: 7px 12px; margin-right: 10px; border-radius: 7px; cursor: pointer;
+    background: var(--panel2); color: var(--ink); border: 1px solid var(--line);
+  }
+
+  /* switch */
+  .flag { display: flex; align-items: center; gap: 12px; margin-top: 16px; }
+  .flag .t { font-size: 13px; font-weight: 600; }
+  .flag .s { font-size: 11.5px; color: var(--muted); }
+  .switch { position: relative; flex: none; width: 44px; height: 25px; }
+  .switch input { position: absolute; inset: 0; opacity: 0; margin: 0; cursor: pointer; z-index: 2; }
+  .track { position: absolute; inset: 0; border-radius: 99px;
+    background: var(--panel2); border: 1px solid var(--line); transition: .18s; }
+  .knob { position: absolute; top: 3px; left: 3px; width: 19px; height: 19px;
+    border-radius: 50%; background: var(--muted); transition: .18s; }
+  .switch input:checked ~ .track { background: color-mix(in srgb, var(--volt) 24%, var(--panel2)); border-color: var(--volt); }
+  .switch input:checked ~ .knob { transform: translateX(19px); background: var(--volt); }
+  .switch input:focus-visible ~ .track { outline: 2px solid var(--volt); outline-offset: 2px; }
+
+  /* save bar */
+  .savebar {
+    position: fixed; left: 0; right: 0; bottom: 0;
+    background: color-mix(in srgb, var(--bg) 88%, transparent);
+    backdrop-filter: blur(8px); border-top: 1px solid var(--line);
+  }
+  .savebar .in { max-width: 780px; margin: 0 auto; padding: 12px 20px;
+    display: flex; align-items: center; gap: 14px; }
+  #save {
+    padding: 10px 26px; border-radius: 9px; border: none; cursor: pointer;
+    background: var(--volt); color: var(--volt-ink);
+    font: 700 13px/1 inherit; font-family: inherit; letter-spacing: .03em;
+  }
+  #save:hover { background: #FFD666; }
+  #save:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+  #saved { color: var(--live); font-weight: 700; font-size: 13px;
+    opacity: 0; transition: opacity .3s; }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+  @media (max-width: 560px) { .row, .groups { grid-template-columns: 1fr; } }
 </style>
 </head>
 <body>
-<h1>⚡ Lightning Applier — Settings</h1>
+<div class="wrap">
 
-<h2>LLM Provider <span class="pill">NVIDIA · Frontier · Local</span></h2>
-<div class="row">
+<div class="mast">
+  <span class="bolt">
+    <svg width="16" height="18" viewBox="0 0 13 15"><path d="M7.8.4 1 8.6h3.6L4 14.6l6.9-8.2H7.3L7.8.4Z" fill="#FFC940"/></svg>
+  </span>
   <div>
-    <label>Provider</label>
-    <select id="provider"></select>
-    <div class="hint">NVIDIA NIM, frontier APIs (OpenAI, Claude, Gemini, OpenRouter, Grok, Mistral, Groq), or fully local (Ollama / LM Studio / custom — no key, nothing leaves your machine).</div>
-  </div>
-  <div>
-    <label>API key</label>
-    <input type="password" id="apiKey" placeholder="">
-    <div class="hint" id="keyHint"></div>
+    <h1>LIGHTNING APPLIER</h1>
+    <div class="sub">Everything stays in this browser's local extension storage.</div>
   </div>
 </div>
-<div class="row">
-  <div><label>Model (blank = provider default)</label><input type="text" id="model" placeholder=""></div>
-  <div><label>Base URL (blank = provider default)</label><input type="text" id="baseUrl" placeholder=""></div>
+
+<section>
+  <div class="eyebrow">Intelligence</div>
+  <h2>LLM provider</h2>
+  <p class="lede">Answers open-ended application questions. Pick a tier, paste a key — or run fully local with no key at all.</p>
+  <div class="groups">
+    <div class="group" id="grpNvidia"><div class="g">NVIDIA</div><div class="d">NIM · Nemotron — free key</div></div>
+    <div class="group" id="grpFrontier"><div class="g">FRONTIER</div><div class="d">OpenAI · Claude · Gemini · more</div></div>
+    <div class="group" id="grpLocal"><div class="g">LOCAL</div><div class="d">Ollama · LM Studio — no key</div></div>
+  </div>
+  <div class="row">
+    <div>
+      <label>Provider</label>
+      <select id="provider"></select>
+    </div>
+    <div>
+      <label>API key</label>
+      <input type="password" id="apiKey" class="monofield" placeholder="">
+      <div class="hint" id="keyHint"></div>
+    </div>
+    <div>
+      <label>Model <span style="text-transform:none;font-weight:500">(blank = default)</span></label>
+      <input type="text" id="model" class="monofield" placeholder="">
+    </div>
+    <div>
+      <label>Base URL <span style="text-transform:none;font-weight:500">(blank = default)</span></label>
+      <input type="text" id="baseUrl" class="monofield" placeholder="">
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="eyebrow">Identity</div>
+  <h2>Your profile</h2>
+  <p class="lede">Fills the standard fields instantly, with zero tokens.</p>
+  <div class="row">
+    <div><label>First name</label><input type="text" id="firstName"></div>
+    <div><label>Last name</label><input type="text" id="lastName"></div>
+    <div><label>Email</label><input type="text" id="email"></div>
+    <div><label>Phone</label><input type="text" id="phone"></div>
+    <div><label>City</label><input type="text" id="city"></div>
+    <div><label>Country</label><input type="text" id="country"></div>
+    <div><label>LinkedIn URL</label><input type="text" id="linkedin" class="monofield"></div>
+    <div><label>GitHub / portfolio</label><input type="text" id="github" class="monofield"></div>
+    <div><label>Years of experience</label><input type="text" id="yearsExperience"></div>
+    <div><label>Current company</label><input type="text" id="currentCompany"></div>
+    <div><label>Notice period</label><input type="text" id="noticePeriod" placeholder="30 days"></div>
+    <div><label>Expected salary</label><input type="text" id="salary" placeholder="Negotiable"></div>
+  </div>
+  <label>CV summary — feeds every AI answer; the denser, the better</label>
+  <textarea id="cvText" rows="6" placeholder="Roles with concrete achievements and numbers, skills, education, certifications…"></textarea>
+  <label>Resume PDF — auto-attached to upload fields</label>
+  <input type="file" id="resumeFile" accept=".pdf">
+  <div class="hint" id="resumeHint"></div>
+</section>
+
+<section>
+  <div class="eyebrow">Eligibility</div>
+  <h2>Work authorization</h2>
+  <p class="lede">Per-country truth: jobs anywhere else automatically answer “authorized — No / sponsorship — Yes”.</p>
+  <div class="row">
+    <div><label>Citizenship (comma-separated)</label><input type="text" id="citizenship" placeholder="India"></div>
+    <div><label>Work visas held (countries)</label><input type="text" id="visas" placeholder="United Kingdom, Singapore"></div>
+  </div>
+</section>
+
+<section>
+  <div class="eyebrow">Targeting</div>
+  <h2>Search &amp; watchlist</h2>
+  <div class="row">
+    <div><label>Include title keywords</label><input type="text" id="includeTerms"></div>
+    <div><label>Exclude title keywords</label><input type="text" id="excludeTerms"></div>
+  </div>
+  <label>Locations (blank = anywhere)</label>
+  <input type="text" id="locationTerms" placeholder="London, Remote, India">
+  <label>Watchlist — one <span style="text-transform:none">ats:company-slug</span> per line (greenhouse · lever · ashby)</label>
+  <textarea id="watchlist" rows="7" spellcheck="false"></textarea>
+</section>
+
+<section>
+  <div class="eyebrow">Throttle</div>
+  <h2>Autopilot limits</h2>
+  <div class="row">
+    <div><label>Scan every (minutes)</label><input type="number" id="scanIntervalMinutes" min="5"></div>
+    <div><label>Min relevance score (0–100)</label><input type="number" id="minScore" min="0" max="100"></div>
+    <div><label>Max applications / day</label><input type="number" id="maxPerDay" min="1"></div>
+    <div><label>Max per scan</label><input type="number" id="maxPerScan" min="1"></div>
+  </div>
+  <div class="flag">
+    <span class="switch">
+      <input type="checkbox" id="autoSubmit">
+      <span class="track"></span><span class="knob"></span>
+    </span>
+    <div>
+      <div class="t">Auto-submit applications</div>
+      <div class="s">Off = fill-only: forms are completed and left open for your review.</div>
+    </div>
+  </div>
+</section>
+
 </div>
 
-<h2>Your Profile</h2>
-<div class="row">
-  <div><label>First name</label><input type="text" id="firstName"></div>
-  <div><label>Last name</label><input type="text" id="lastName"></div>
-  <div><label>Email</label><input type="text" id="email"></div>
-  <div><label>Phone</label><input type="text" id="phone"></div>
-  <div><label>City</label><input type="text" id="city"></div>
-  <div><label>Country</label><input type="text" id="country"></div>
-  <div><label>LinkedIn URL</label><input type="text" id="linkedin"></div>
-  <div><label>GitHub / portfolio</label><input type="text" id="github"></div>
-  <div><label>Years of experience</label><input type="text" id="yearsExperience"></div>
-  <div><label>Current company</label><input type="text" id="currentCompany"></div>
-  <div><label>Notice period</label><input type="text" id="noticePeriod" placeholder="30 days"></div>
-  <div><label>Expected salary</label><input type="text" id="salary" placeholder="Negotiable"></div>
-</div>
-<label>CV summary (feeds every AI answer — the denser, the better)</label>
-<textarea id="cvText" rows="6" placeholder="Paste a dense summary of your CV: roles, achievements with numbers, skills, education…"></textarea>
-<label>Resume PDF (auto-attached to file-upload fields)</label>
-<input type="file" id="resumeFile" accept=".pdf">
-<div class="hint" id="resumeHint"></div>
-
-<h2>Work Authorization (per-country truth)</h2>
-<div class="row">
-  <div><label>Citizenship (comma-separated)</label><input type="text" id="citizenship" placeholder="India"></div>
-  <div><label>Work visas held (comma-separated countries)</label><input type="text" id="visas" placeholder="United Kingdom, Singapore"></div>
-</div>
-<div class="hint">Jobs in any other country automatically answer “authorized: No / sponsorship: Yes”.</div>
-
-<h2>Job Search</h2>
-<label>Include title keywords (comma-separated)</label>
-<input type="text" id="includeTerms">
-<label>Exclude title keywords</label>
-<input type="text" id="excludeTerms">
-<label>Locations (comma-separated, blank = anywhere)</label>
-<input type="text" id="locationTerms" placeholder="London, Remote, India">
-<label>Watchlist — one <code>ats:company-slug</code> per line (greenhouse / lever / ashby)</label>
-<textarea id="watchlist" rows="7"></textarea>
-
-<h2>Autopilot</h2>
-<div class="row">
-  <div><label>Scan every (minutes)</label><input type="number" id="scanIntervalMinutes" min="5"></div>
-  <div><label>Min relevance score (0-100)</label><input type="number" id="minScore" min="0" max="100"></div>
-  <div><label>Max applications / day</label><input type="number" id="maxPerDay" min="1"></div>
-  <div><label>Max per scan</label><input type="number" id="maxPerScan" min="1"></div>
-</div>
-<div class="check"><input type="checkbox" id="autoSubmit"><span>Auto-submit applications (off = fill only, you review &amp; click submit)</span></div>
-
-<button id="save">Save settings</button><span id="saved">Saved ✓</span>
+<div class="savebar"><div class="in">
+  <button id="save">Save settings</button>
+  <span id="saved">Saved ✓</span>
+</div></div>
 
 <script src="options.js" type="module"></script>
 </body>

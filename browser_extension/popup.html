@@ -3,33 +3,124 @@
 <head>
 <meta charset="utf-8">
 <style>
-  :root { color-scheme: light dark; }
-  body { font: 13px/1.5 system-ui, sans-serif; width: 280px; margin: 0; padding: 14px; }
-  h1 { font-size: 15px; margin: 0 0 10px; }
-  .stat { display: flex; justify-content: space-between; padding: 3px 0; }
-  .stat b { font-variant-numeric: tabular-nums; }
-  .switch { display: flex; align-items: center; justify-content: space-between;
-    padding: 9px 0; border-top: 1px solid #8884; border-bottom: 1px solid #8884; margin: 10px 0; }
-  button { width: 100%; padding: 8px; margin-top: 8px; border-radius: 7px;
-    border: 1px solid #8886; background: transparent; color: inherit; cursor: pointer; font: inherit; }
-  button.primary { background: #2563eb; color: #fff; border: none; font-weight: 600; }
-  .muted { font-size: 11px; opacity: .6; margin-top: 8px; }
+  :root {
+    --bg: #0E1116; --panel: #151B24; --panel2: #1B2330; --line: #26303F;
+    --ink: #E9EEF6; --muted: #8B97A9; --volt: #FFC940; --volt-ink: #171207;
+    --live: #3ECF8E; --crit: #E25A4E;
+    --mono: ui-monospace, "SF Mono", "Cascadia Code", Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    width: 320px; margin: 0; background: var(--bg); color: var(--ink);
+    font: 13px/1.45 "Avenir Next", "Segoe UI", system-ui, sans-serif;
+  }
+  /* masthead */
+  header {
+    display: flex; align-items: center; gap: 9px;
+    padding: 13px 16px 11px; border-bottom: 1px solid var(--line);
+  }
+  .bolt {
+    width: 26px; height: 26px; border-radius: 7px; flex: none;
+    background: linear-gradient(160deg, #2A3547, #1B2330);
+    border: 1px solid var(--line); display: grid; place-items: center;
+  }
+  .wordmark { font-size: 11px; font-weight: 700; letter-spacing: .18em; }
+  .wordmark small { display: block; font-size: 9px; font-weight: 500;
+    letter-spacing: .14em; color: var(--muted); margin-top: 1px; }
+  .led { margin-left: auto; width: 8px; height: 8px; border-radius: 50%;
+    background: var(--muted); box-shadow: 0 0 0 3px color-mix(in srgb, var(--muted) 18%, transparent); }
+  body.on .led { background: var(--live);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--live) 22%, transparent); }
+
+  /* hero control */
+  .hero {
+    margin: 14px 16px 12px; padding: 13px 14px; border-radius: 12px;
+    background: var(--panel); border: 1px solid var(--line);
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  }
+  .hero .t { font-size: 13.5px; font-weight: 700; }
+  .hero .s { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  .switch { position: relative; flex: none; width: 44px; height: 25px; }
+  .switch input { position: absolute; inset: 0; opacity: 0; margin: 0; cursor: pointer; z-index: 2; }
+  .track {
+    position: absolute; inset: 0; border-radius: 99px; background: var(--panel2);
+    border: 1px solid var(--line); transition: background .18s, border-color .18s;
+  }
+  .knob {
+    position: absolute; top: 3px; left: 3px; width: 19px; height: 19px;
+    border-radius: 50%; background: var(--muted); transition: transform .18s, background .18s;
+  }
+  .switch input:checked ~ .track { background: color-mix(in srgb, var(--volt) 24%, var(--panel2)); border-color: var(--volt); }
+  .switch input:checked ~ .knob { transform: translateX(19px); background: var(--volt); }
+  .switch input:focus-visible ~ .track { outline: 2px solid var(--volt); outline-offset: 2px; }
+
+  /* stats */
+  .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 0 16px; }
+  .tile {
+    padding: 10px 12px 9px; border-radius: 10px;
+    background: var(--panel); border: 1px solid var(--line);
+  }
+  .tile .k { font-size: 9.5px; letter-spacing: .13em; color: var(--muted);
+    text-transform: uppercase; font-weight: 600; }
+  .tile .v { font: 600 19px/1.2 var(--mono); font-variant-numeric: tabular-nums;
+    margin-top: 3px; }
+  .tile .v.sm { font-size: 13px; }
+  .tile.hot .v { color: var(--volt); }
+
+  /* actions */
+  .actions { display: grid; gap: 7px; margin: 12px 16px 0; }
+  button {
+    width: 100%; padding: 9px 12px; border-radius: 9px; cursor: pointer;
+    font: 600 12.5px/1 inherit; font-family: inherit; letter-spacing: .02em;
+    background: var(--panel); color: var(--ink); border: 1px solid var(--line);
+    transition: border-color .15s, background .15s;
+  }
+  button:hover { border-color: var(--muted); }
+  button:focus-visible { outline: 2px solid var(--volt); outline-offset: 2px; }
+  button.primary { background: var(--volt); color: var(--volt-ink); border-color: var(--volt); }
+  button.primary:hover { background: #FFD666; }
+
+  footer {
+    margin: 12px 0 0; padding: 9px 16px 11px; border-top: 1px solid var(--line);
+    font-size: 10.5px; color: var(--muted);
+  }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>
 </head>
 <body>
-<h1>⚡ Lightning Applier</h1>
-<div class="switch">
-  <span><b>24/7 autopilot</b></span>
-  <input type="checkbox" id="enabled">
+<header>
+  <span class="bolt">
+    <svg width="13" height="15" viewBox="0 0 13 15"><path d="M7.8.4 1 8.6h3.6L4 14.6l6.9-8.2H7.3L7.8.4Z" fill="#FFC940"/></svg>
+  </span>
+  <div class="wordmark">LIGHTNING<small>APPLIER</small></div>
+  <span class="led"></span>
+</header>
+
+<div class="hero">
+  <div>
+    <div class="t">Autopilot</div>
+    <div class="s">Scans your boards while Chrome runs</div>
+  </div>
+  <span class="switch">
+    <input type="checkbox" id="enabled">
+    <span class="track"></span><span class="knob"></span>
+  </span>
 </div>
-<div class="stat"><span>Applied today</span><b id="today">–</b></div>
-<div class="stat"><span>Applied total</span><b id="total">–</b></div>
-<div class="stat"><span>Answers learned</span><b id="answers">–</b></div>
-<div class="stat"><span>Last scan</span><b id="lastScan">–</b></div>
-<button class="primary" id="runNow">Scan now</button>
-<button id="fillPage">Fill this page</button>
-<button id="openOptions">Settings</button>
-<div class="muted" id="mode"></div>
+
+<div class="stats">
+  <div class="tile hot"><div class="k">Applied today</div><div class="v" id="today">–</div></div>
+  <div class="tile"><div class="k">All-time</div><div class="v" id="total">–</div></div>
+  <div class="tile"><div class="k">Answers learned</div><div class="v" id="answers">–</div></div>
+  <div class="tile"><div class="k">Last scan</div><div class="v sm" id="lastScan">–</div></div>
+</div>
+
+<div class="actions">
+  <button class="primary" id="runNow">Scan now</button>
+  <button id="fillPage">Fill this page</button>
+  <button id="openOptions">Settings</button>
+</div>
+
+<footer id="mode"></footer>
 <script src="popup.js"></script>
 </body>
 </html>
