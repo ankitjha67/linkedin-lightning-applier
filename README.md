@@ -551,7 +551,7 @@ Extension points: ATS handlers, job platforms, resume templates, role archetypes
 ## Testing
 
 ```bash
-# Run all 386 tests
+# Run all 396 tests
 python -m unittest discover -s tests -v
 
 # Run specific test module
@@ -560,6 +560,27 @@ python -m unittest tests.test_salary_intel -v
 ```
 
 Tests cover: State class (49 tables, CRUD, migration, CSV export), match scoring (JSON parsing, bounds, thresholds), salary parsing (10+ currencies), dedup engine (fingerprinting, cross-platform matching), apply timing (freshness scoring, queue reordering), JD change tracking (snapshot capture, change detection), and config validation (missing sections, conflicts, numeric bounds).
+
+### Browser end-to-end tests (extension)
+
+Unit tests can't catch what only shows up in a real browser on a real ATS form.
+`tests/e2e/` drives the **actual extension** in **actual Chrome** — installs it
+unpacked, configures it through its own Settings UI, opens a live job posting,
+clicks "Fill this page" — and fails on console errors, unfilled identity fields,
+keyword-answered consent questions, or fill-only runs that wrongly count as
+applications.
+
+```bash
+cd tests/e2e && npm install
+npm test                                   # headless, live posting
+npm run test:headed                        # watch it drive the browser
+node extension-e2e.js --url <posting-url>  # any supported ATS posting
+node extension-e2e.js --headed --profile ~/lla-profile   # keeps logins between runs
+```
+
+Exit code is `0` only when no bugs are found, so it can gate CI. This harness
+caught four real bugs, including a Greenhouse consent question being
+auto-answered with the notice period.
 
 ## Production Hardening
 

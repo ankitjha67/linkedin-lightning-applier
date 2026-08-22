@@ -1,0 +1,11 @@
+{
+  "name": "lla-extension-e2e",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Browser end-to-end tests for the Lightning Applier extension",
+  "scripts": {
+    "test": "node extension-e2e.js",
+    "test:headed": "node extension-e2e.js --headed"
+  },
+  "devDependencies": { "playwright": "^1.40.0" }
+}
