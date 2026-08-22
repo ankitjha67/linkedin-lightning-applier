@@ -89,9 +89,53 @@ def create_browser(cfg: dict):
     ud = bc.get("user_data_dir", "")
     if ud:
         opts.add_argument(f"--user-data-dir={ud}")
-    # Pin ChromeDriver to match installed Chrome version
+    # Pin ChromeDriver to the INSTALLED Chrome version. Config wins; otherwise
+    # auto-detect (Windows registry / mac / linux binaries) so a fresh machine
+    # never hits "ChromeDriver only supports Chrome version NNN".
     version_main = bc.get("chrome_version", None)
-    driver = uc.Chrome(options=opts, use_subprocess=True, version_main=version_main)
+    if not version_main:
+        try:
+            from env_doctor import detect_chrome_version
+            version_main = detect_chrome_version()
+            if version_main:
+                log.info(f"Auto-detected Chrome {version_main}")
+        except Exception:
+            version_main = None
+    auto_update = bc.get("auto_update_driver", True)
+    try:
+        driver = uc.Chrome(options=opts, use_subprocess=True, version_main=version_main)
+    except Exception as e:
+        # Self-heal step 1: the error usually names the Chrome version it wants.
+        wanted = None
+        try:
+            from env_doctor import chrome_version_from_error
+            wanted = chrome_version_from_error(e)
+        except Exception:
+            pass
+        if wanted and wanted != version_main:
+            log.warning(f"Driver/Chrome mismatch — retrying pinned to Chrome {wanted}")
+            try:
+                driver = uc.Chrome(options=opts, use_subprocess=True, version_main=wanted)
+                driver.implicitly_wait(5)
+                return driver
+            except Exception as e2:
+                e = e2
+        # Self-heal step 2: undetected-chromedriver itself may be too old for a
+        # brand-new Chrome — upgrade the package in-place and retry once.
+        if auto_update:
+            log.warning("Upgrading undetected-chromedriver + selenium, then retrying…")
+            try:
+                from env_doctor import install_packages
+                if install_packages(["undetected-chromedriver", "selenium"], upgrade=True):
+                    import importlib
+                    importlib.reload(uc)
+                    driver = uc.Chrome(options=opts, use_subprocess=True,
+                                       version_main=wanted or version_main)
+                    driver.implicitly_wait(5)
+                    return driver
+            except Exception as e3:
+                e = e3
+        raise e
     driver.implicitly_wait(5)
     return driver
 
@@ -1151,6 +1195,15 @@ def _find_answer(l: str, personal: dict, app: dict, qa: dict,
             return wa
         if work_auth.recognizes(l):
             return ""  # recognized but unresolvable here -> let AI decide
+    # Long prose labels (consent notices, GDPR blurbs, essay prompts) must never
+    # be answered from short keyword rules — observed live on Greenhouse, where a
+    # privacy-notice question was answered with the notice PERIOD. Let AI decide.
+    try:
+        from ats_handlers.base import is_prose_label
+        if is_prose_label(l):
+            return ""
+    except Exception:
+        pass
     if "first name" in l: return personal.get("first_name","")
     if "last name" in l: return personal.get("last_name","")
     if "full name" in l or "your name" in l: return personal.get("full_name","")
@@ -1161,8 +1214,8 @@ def _find_answer(l: str, personal: dict, app: dict, qa: dict,
     if "zip" in l or "postal" in l: return personal.get("zip_code","")
     if "country" in l: return personal.get("country","")
     if "headline" in l: return personal.get("linkedin_headline","")
-    if "salary" in l or "compensation" in l or "pay" in l or "expected" in l: return app.get("desired_salary","")
-    if "notice" in l: return app.get("notice_period_days","")
+    if "salary" in l or "compensation" in l or "expected pay" in l or "expected comp" in l: return app.get("desired_salary","")
+    if "notice period" in l or "period of notice" in l: return app.get("notice_period_days","")
     if "relocat" in l: return app.get("willing_to_relocate","")
     if "authorized" in l or "legally" in l or "eligible" in l or "right to work" in l: return app.get("authorized_to_work","")
     if "sponsorship" in l or "visa" in l or "work permit" in l: return app.get("require_visa","")

@@ -73,7 +73,10 @@ The bot runs in a continuous loop. Every cycle:
 - **ATS CV Template Engine** (`cv_template_engine.py`) — ATS-optimized HTML→PDF CV generation with keyword injection from JD.
 - **Pipeline State Machine** (`pipeline_manager.py`) — Formal lifecycle states (discovered → evaluated → applied → interviewing → offer) with enforced transitions.
 
-### Application Craftsmanship (8 — new in v2.9)
+### Application Craftsmanship (11 — new in v2.9)
+- **Browser Extension (24/7 in-browser autopilot)** (`browser_extension/`) — Chrome/Edge MV3 companion that runs in your **real logged-in browser** (no chromedriver): alarm-driven board scanning, LLM relevance scoring with **NVIDIA NIM / frontier / local Ollama-LM Studio** provider placeholders, per-country work-auth answers, learned-answer reuse, resume auto-attach, fill-only or auto-submit.
+- **Environment Doctor** (`env_doctor.py` / `lla doctor --fix`) — Auto-detects your Python and **installed Chrome version** (Windows registry / macOS / Linux), installs missing packages one-by-one, and reports optional tools. Browser launch self-heals a Chrome↔driver mismatch (re-pins, then auto-upgrades the driver) so it never dies on a version error.
+- **Country-Aware Work Authorization** (`work_auth.py`) — "Authorized to work?" / "Need sponsorship?" answered from the JOB's country vs your citizenship + visas held. Countries you're not authorized in automatically answer No / sponsorship-required. Deterministic, zero tokens, and never cached across borders.
 - **Batch External Apply** (`apply_urls.py`) — Submit ATS applications from a plain URL list (txt/CSV/JSON) in a real browser, **no LinkedIn required**. URL-dedup against SQLite; `--dry-run` previews ATS detection.
 - **LaTeX Application Documents** (`latex_docs.py`, `application_docs.py`) — Typeset moderncv CV + matching cover letter per job; compiles via lualatex/xelatex/pdflatex, degrades to `.tex`. Optional auto-generation in the run loop.
 - **ATS Text-Layer Verification** (`ats_pdf_check.py`) — Checks the compiled PDF the way an ATS parser reads it: literal contact details, reading order, glyph garbage, and JD keyword coverage. Relevance-weighted CV trimming (`relevance_cutter.py`) cuts by value, not age.
@@ -296,10 +299,10 @@ tools_layer.py          Protocol-agnostic tool layer (MCP/adapter foundation)
 careers_scanner.py      Curated company careers-page scanner (Greenhouse/Lever/Ashby)
 companies.json          Curated target-company database (30+ companies)
 pyproject.toml          PyPI packaging — `pip install` + `lla` CLI entry point
-tests/                  357 unit + integration tests
+tests/                  386 unit + integration tests
 ```
 
-34,497 lines across 105 Python files and 56 features. Includes 357 unit tests.
+35,166 lines across 108 Python files and 58 features. Includes 386 unit tests.
 
 ## AI Providers
 
@@ -548,7 +551,7 @@ Extension points: ATS handlers, job platforms, resume templates, role archetypes
 ## Testing
 
 ```bash
-# Run all 357 tests
+# Run all 396 tests
 python -m unittest discover -s tests -v
 
 # Run specific test module
@@ -557,6 +560,27 @@ python -m unittest tests.test_salary_intel -v
 ```
 
 Tests cover: State class (49 tables, CRUD, migration, CSV export), match scoring (JSON parsing, bounds, thresholds), salary parsing (10+ currencies), dedup engine (fingerprinting, cross-platform matching), apply timing (freshness scoring, queue reordering), JD change tracking (snapshot capture, change detection), and config validation (missing sections, conflicts, numeric bounds).
+
+### Browser end-to-end tests (extension)
+
+Unit tests can't catch what only shows up in a real browser on a real ATS form.
+`tests/e2e/` drives the **actual extension** in **actual Chrome** — installs it
+unpacked, configures it through its own Settings UI, opens a live job posting,
+clicks "Fill this page" — and fails on console errors, unfilled identity fields,
+keyword-answered consent questions, or fill-only runs that wrongly count as
+applications.
+
+```bash
+cd tests/e2e && npm install
+npm test                                   # headless, live posting
+npm run test:headed                        # watch it drive the browser
+node extension-e2e.js --url <posting-url>  # any supported ATS posting
+node extension-e2e.js --headed --profile ~/lla-profile   # keeps logins between runs
+```
+
+Exit code is `0` only when no bugs are found, so it can gate CI. This harness
+caught four real bugs, including a Greenhouse consent question being
+auto-answered with the notice period.
 
 ## Production Hardening
 

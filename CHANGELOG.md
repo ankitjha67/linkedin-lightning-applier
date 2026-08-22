@@ -2,6 +2,46 @@
 
 ## v2.9.0 — Screener Gate, LaTeX Docs, Answer RAG & Application Craftsmanship
 
+### Added (browser extension)
+- **Browser extension** (`browser_extension/`, Chrome/Edge Manifest V3, no
+  build step — Load Unpacked) — a 24/7 in-browser autopilot that complements
+  the Python bot by running inside the user's REAL logged-in session (no
+  chromedriver, no separate profile):
+  * `chrome.alarms`-driven scan loop over a Greenhouse/Lever/Ashby watchlist
+    (free JSON APIs), keyword + LLM relevance scoring, daily/per-scan caps,
+    URL dedup, badge counter, notifications.
+  * LLM provider PLACEHOLDERS grouped as NVIDIA (NIM, Nemotron), Frontier
+    (OpenAI, Anthropic, Gemini, OpenRouter free, xAI Grok, Mistral, Groq) and
+    Local (Ollama, LM Studio, custom endpoint — no key, fully offline). One
+    OpenAI-compatible client covers all of them.
+  * Content-script form filler for 10 ATS boards: per-country work-auth
+    answers (citizenship + visas, sponsorship inversion — ported from
+    work_auth.py incl. the "us"-stopword lesson), profile keyword map,
+    learned-answer memory (RAG-lite, zero tokens), LLM fallback, resume PDF
+    auto-attach via DataTransfer, React-safe native value setters.
+  * Safe defaults: autopilot OFF and fill-only (no auto-submit) until the
+    user opts in. Everything stays in chrome.storage.local.
+  * +14 validation tests (tests/test_browser_extension.py) — manifest, file
+    references, provider placeholders, no-secrets, behavior contracts; all
+    5 JS files pass node --check. Suite 372 → 386.
+
+### Added (environment doctor + self-healing browser)
+- **Environment doctor** (`env_doctor.py` + `lla doctor [--fix] [--upgrade]`) —
+  auto-detects Python, the INSTALLED Chrome major version (Windows registry /
+  macOS / Linux binaries), and every required/optional package; `--fix` installs
+  the missing ones one at a time (a single build failure never blocks the rest;
+  pip/setuptools/wheel refreshed first), `--upgrade` bumps the browser stack.
+  Reports LaTeX engine / pdftotext / Ollama / LM Studio presence.
+- **Self-healing browser launch** — `create_browser` auto-detects Chrome when
+  `browser.chrome_version` is unset (now the default: `null`), and on a launch
+  mismatch re-pins to the version named in the error, then (with
+  `browser.auto_update_driver: true`) upgrades undetected-chromedriver+selenium
+  and retries once. No more "ChromeDriver only supports Chrome version NNN".
+- Hardened `ats_pdf_check.extract_pdf_text` to catch `BaseException` — a broken
+  optional native dep (e.g. a pyo3/cryptography panic under pdfminer) no longer
+  crashes the ATS check.
+- +15 tests (`tests/test_env_doctor.py`). Suite 357 → 372.
+
 ### Added (work authorization, Answer RAG, any-job-board, more LLMs)
 - **Country-aware work authorization** (`work_auth.py` + `work_authorization:`
   config) — "Are you authorized to work?" / "Do you require sponsorship?" is

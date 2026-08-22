@@ -28,7 +28,8 @@ try:
     import yaml
     from selenium.webdriver.common.by import By
 except ImportError:
-    print("Missing dependencies. Run: pip install selenium undetected-chromedriver pyyaml")
+    print("Missing dependencies. Run:  python cli.py doctor --fix")
+    print("(auto-detects Python/Chrome/packages and installs what's missing)")
     sys.exit(1)
 
 from state import State

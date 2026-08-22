@@ -324,6 +324,53 @@ def cmd_screen(args):
                       f"★{p['stars']}] {p['description'][:50]}")
 
 
+def cmd_doctor(args):
+    """Detect Python/Chrome/packages/tools; install or update as needed.
+
+    `lla doctor` reports; `--fix` installs missing packages; `--upgrade` also
+    updates the browser stack (undetected-chromedriver + selenium) so a freshly
+    auto-updated Chrome keeps working.
+    """
+    _print_banner("Environment Doctor")
+    from env_doctor import MIN_PYTHON, run_doctor
+    rep = run_doctor(fix=args.fix, upgrade=args.upgrade)
+
+    py = rep["python"]
+    print(f"  Python    : {py['version']}  "
+          f"{_color('OK', 'green') if py['ok'] else _color(f'needs >= {MIN_PYTHON[0]}.{MIN_PYTHON[1]}', 'red')}")
+    ch = rep["chrome"]["version"]
+    print(f"  Chrome    : {('v' + str(ch) + '  ' if ch else '')}"
+          f"{_color('detected — driver will be pinned automatically', 'green') if ch else _color('NOT FOUND — install Google Chrome', 'red')}")
+
+    print("\n  Packages:")
+    for p in rep["packages"]:
+        mark = _color("✓", "green") if p["installed"] else (
+            _color("✗ MISSING", "red") if p["kind"] == "required"
+            else _color("– not installed (optional)", "yellow"))
+        ver = f" {p['installed']}" if p["installed"] else ""
+        print(f"    {p['name']:26} {mark}{ver}")
+    if rep["installed_now"]:
+        print(f"\n  {_color('Installed now:', 'green')} {', '.join(rep['installed_now'])}")
+    if rep["upgraded_now"]:
+        print(f"  {_color('Upgraded now:', 'green')} {', '.join(rep['upgraded_now'])}")
+
+    t = rep["tools"]
+    print("\n  Optional tools:")
+    print(f"    LaTeX engine   : {t['latex_engine'] or 'none (lla docs writes .tex only)'}")
+    print(f"    pdftotext      : {'yes' if t['pdftotext'] else 'no (ATS check uses pdfminer/plain text)'}")
+    print(f"    Ollama         : {'running :11434' if t['ollama_running'] else 'not running'}")
+    print(f"    LM Studio      : {'running :1234' if t['lmstudio_running'] else 'not running'}")
+
+    if rep["ok"]:
+        print(f"\n  {_color('READY — environment is good to launch.', 'green')}")
+    else:
+        missing = ", ".join(rep["missing_required"]) or "python version"
+        print(f"\n  {_color('NOT READY:', 'red')} {missing}")
+        if not args.fix:
+            print("  Run:  python cli.py doctor --fix")
+        sys.exit(1)
+
+
 def cmd_test_llm(args):
     """Send one real prompt to the configured (or overridden) LLM and print the reply.
 
@@ -926,6 +973,12 @@ def build_parser() -> argparse.ArgumentParser:
                    help="Rubric profile (default: auto-detect from the JD)")
     p.add_argument("--github", help="Your GitHub URL/username for signal analysis")
 
+    # --- doctor ---
+    p = subs.add_parser("doctor", help="Detect/install/update dependencies, Chrome driver pinning, tools")
+    p.add_argument("--fix", action="store_true", help="Install missing packages automatically")
+    p.add_argument("--upgrade", action="store_true",
+                   help="Also upgrade the browser stack (undetected-chromedriver, selenium)")
+
     # --- test-llm ---
     p = subs.add_parser("test-llm", help="Send one prompt to the configured LLM to verify it works")
     p.add_argument("--provider", help="Override provider (openrouter, gemini, ollama, lmstudio, ...)")
@@ -1053,6 +1106,7 @@ COMMAND_MAP = {
     "apply": cmd_apply,
     "docs": cmd_docs,
     "screen": cmd_screen,
+    "doctor": cmd_doctor,
     "test-llm": cmd_test_llm,
     "evaluate": cmd_evaluate,
     "score": cmd_score,
