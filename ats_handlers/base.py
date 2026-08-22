@@ -23,9 +23,27 @@ swallows per-element errors and moves on.
 
 import logging
 import os
+import re
 import time
 
 log = logging.getLogger("lla.ats")
+
+# Long prose labels must not be keyword-matched (see keyword_match).
+_PROSE_WORDS = 12
+_PROSE_CHARS = 70
+_CONSENT_RE = re.compile(
+    r"privacy|gdpr|consent|data (safe|protection|processing)|terms|policy|acknowledg",
+    re.I)
+
+
+def is_prose_label(label: str) -> bool:
+    """True when a label reads as a sentence/consent notice, not a field name."""
+    if not label:
+        return False
+    return (len(label.split()) > _PROSE_WORDS
+            or len(label) > _PROSE_CHARS
+            or bool(_CONSENT_RE.search(label)))
+
 
 # Values that mean "no real selection yet" in dropdowns
 _PLACEHOLDER_VALUES = {
@@ -434,6 +452,12 @@ class ATSHandler:
         if not label:
             return ""
         low = label.lower()
+        # Long prose labels (consent notices, GDPR blurbs, essay prompts) must
+        # never be answered by short keyword rules. Observed live on Greenhouse:
+        # "🔐 Keeping your data safe … read our privacy notice …" was answered
+        # with the notice PERIOD because it contains "notice". Prose goes to AI.
+        if is_prose_label(label):
+            return ""
         p, a, qa = self.personal, self.application, self.qa
         if "first name" in low or ("given" in low and "name" in low):
             return p.get("first_name", "")
@@ -449,7 +473,7 @@ class ATSHandler:
             return p.get("phone", "")
         if "address line 1" in low or "street" in low or low.strip() == "address":
             return p.get("address", p.get("city", ""))
-        if "city" in low or "town" in low:
+        if re.search(r"\bcity\b|\btown\b", low):
             return p.get("city", "")
         if "state" in low or "province" in low or "region" in low:
             return p.get("state", "")
@@ -465,9 +489,9 @@ class ATSHandler:
             return str(a.get("years_of_experience", ""))
         if "current" in low and ("company" in low or "employer" in low):
             return qa.get("current company", "")
-        if "salary" in low or "compensation" in low or "expected" in low or "ctc" in low:
+        if "salary" in low or "compensation" in low or re.search(r"\bctc\b", low):
             return a.get("desired_salary", "")
-        if "notice" in low:
+        if "notice period" in low or "period of notice" in low:
             return a.get("notice_period_days", "")
         if "visa" in low or "sponsor" in low or "work permit" in low:
             return a.get("require_visa", "")

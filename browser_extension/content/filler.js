@@ -50,6 +50,20 @@
     return "";
   }
 
+  // When the job context carries no location (manual "Fill this page"), read the
+  // country off the posting itself — title, headings and the first slice of body
+  // text is where every job board states where the role is.
+  let _pageCountry;
+  function countryFromPage() {
+    if (_pageCountry !== undefined) return _pageCountry;
+    const parts = [document.title];
+    document.querySelectorAll("h1, h2, [class*=location], [class*=Location]")
+      .forEach((el) => parts.push(el.textContent || ""));
+    parts.push((document.body?.innerText || "").slice(0, 1200));
+    _pageCountry = countryFrom(parts.join(" \n ")) || "";
+    return _pageCountry;
+  }
+
   function workAuthAnswer(label) {
     const wa = SETTINGS?.workAuth || {};
     const covered = new Set(
@@ -61,7 +75,7 @@
     const isSponsor = /sponsor|require.{0,20}visa|need.{0,20}visa/.test(l);
     const isCitizen = /citizen/.test(l);
     if (!isAuth && !isSponsor && !isCitizen) return null;
-    const country = countryFrom(label) || countryFrom(JOB.location);
+    const country = countryFrom(label) || countryFrom(JOB.location) || countryFromPage();
     if (!country) return null;
     const citizenship = new Set((wa.citizenship || "").split(",")
       .map((c) => countryFrom(c) || c.trim().toLowerCase()).filter(Boolean));
@@ -72,25 +86,40 @@
   }
 
   // ── profile keyword map ──
+  // Long prose labels (consent notices, GDPR blurbs, essay prompts) must NOT be
+  // matched by short keyword rules. A real bug this guards against: Greenhouse's
+  // "🔐 Keeping your data safe… please read our privacy notice…" question was
+  // being answered with the notice PERIOD ("30 days") because it contains
+  // "notice". Prose is answered by the LLM, or left alone.
+  const PROSE_WORDS = 12;
+  const PROSE_CHARS = 70;
+  const CONSENT_RE = /privacy|gdpr|consent|data (safe|protection|processing)|terms|policy|acknowledg/i;
+
+  function isProse(label) {
+    const words = label.trim().split(/\s+/).length;
+    return words > PROSE_WORDS || label.length > PROSE_CHARS || CONSENT_RE.test(label);
+  }
+
   function profileAnswer(label) {
     const p = SETTINGS?.profile || {};
     const l = label.toLowerCase();
+    if (isProse(label)) return null;   // never keyword-match a sentence
     const map = [
       [/first name|given name/, p.firstName],
       [/last name|surname|family name/, p.lastName],
       [/full name|^name$|your name/, p.fullName || `${p.firstName || ""} ${p.lastName || ""}`.trim()],
       [/e-?mail/, p.email],
       [/phone|mobile|telephone/, p.phone],
-      [/city|town/, p.city],
-      [/state|province/, p.state],
-      [/zip|postal/, p.zip],
-      [/country/, p.country],
+      [/\bcity\b|\btown\b/, p.city],
+      [/\bstate\b|province/, p.state],
+      [/\bzip\b|postal/, p.zip],
+      [/\bcountry\b/, p.country],
       [/linkedin/, p.linkedin],
-      [/github|portfolio|website/, p.github],
+      [/github|portfolio|personal website/, p.github],
       [/years.*experience|total experience/, p.yearsExperience],
       [/current (company|employer)/, p.currentCompany],
-      [/notice/, p.noticePeriod],
-      [/salary|compensation|ctc/, p.salary],
+      [/notice period|period of notice/, p.noticePeriod],
+      [/salary|compensation|\bctc\b/, p.salary],
       [/how did you hear/, "LinkedIn"],
     ];
     for (const [re, val] of map) if (re.test(l) && val) return String(val);
@@ -164,8 +193,13 @@
 
   // ── the sweep ──
   async function sweep() {
-    // Workday and some boards gate the form behind an Apply button
-    for (const txt of ["apply manually", "apply now", "apply", "i'm interested", "apply for this job"]) {
+    // Some boards gate the form behind an Apply button. Only click when the
+    // form is not already present — clicking a bare "Apply" on a page that
+    // already shows the form can navigate away or trigger the wrong action.
+    const formAlreadyVisible = document.querySelectorAll(
+      "input[type=text],input[type=email],input[type=tel],textarea").length >= 3;
+    for (const txt of formAlreadyVisible ? [] :
+         ["apply manually", "apply now", "apply", "i'm interested", "apply for this job"]) {
       const btn = [...document.querySelectorAll("button, a[role=button]")]
         .find((b) => b.offsetParent && b.textContent.trim().toLowerCase() === txt);
       if (btn) { btn.click(); await sleep(2500); break; }

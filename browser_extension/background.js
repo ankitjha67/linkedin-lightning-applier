@@ -32,7 +32,8 @@ const DEFAULTS = {
   cvText: "",
   resumeName: "", resumeB64: "",   // stored resume for file inputs
   answers: [],               // learned Q→A memory
-  applied: [],               // job URLs already handled
+  seen: [],                  // job URLs already opened this cycle-set (dedup)
+  applied: [],               // job URLs actually SUBMITTED
   stats: { day: "", appliedToday: 0, lastScan: "", totalApplied: 0 },
 };
 
@@ -46,14 +47,22 @@ const save = (patch) => chrome.storage.local.set(patch);
 
 function todayKey() { return new Date().toISOString().slice(0, 10); }
 
-async function bumpApplied(url) {
+async function bumpApplied(url, submitted) {
   const s = await getState();
   const stats = s.stats.day === todayKey()
-    ? s.stats : { ...s.stats, day: todayKey(), appliedToday: 0 };
-  stats.appliedToday += 1; stats.totalApplied = (stats.totalApplied || 0) + 1;
-  const applied = [...new Set([...s.applied, url])].slice(-2000);
-  await save({ stats, applied });
-  chrome.action.setBadgeText({ text: String(stats.appliedToday) });
+    ? s.stats : { ...s.stats, day: todayKey(), appliedToday: 0, filledToday: 0 };
+  if (submitted) {
+    // Only a real submission counts against the daily cap and the counters.
+    stats.appliedToday += 1;
+    stats.totalApplied = (stats.totalApplied || 0) + 1;
+    const applied = [...new Set([...s.applied, url])].slice(-2000);
+    await save({ stats, applied });
+    chrome.action.setBadgeText({ text: String(stats.appliedToday) });
+  } else {
+    // Fill-only: the form was completed for review, nothing was sent.
+    stats.filledToday = (stats.filledToday || 0) + 1;
+    await save({ stats });
+  }
 }
 
 // ───────────────────────── answer memory (RAG-lite) ─────────────────────────
@@ -169,14 +178,15 @@ async function runScan(manual = false) {
   if (stats.appliedToday >= s.maxPerDay) return;
 
   await save({ stats: { ...stats, lastScan: new Date().toISOString() } });
-  const appliedSet = new Set(s.applied);
+  // Dedup against both: already-submitted AND already-opened this run.
+  const seenSet = new Set([...(s.seen || []), ...s.applied]);
   let opened = 0;
 
   for (const entry of s.watchlist.split("\n").map((x) => x.trim()).filter(Boolean)) {
     if (opened >= s.maxPerScan) break;
     for (const job of await fetchBoard(entry)) {
       if (opened >= s.maxPerScan) break;
-      if (!job.url || appliedSet.has(job.url) || !locationOk(job, s)) continue;
+      if (!job.url || seenSet.has(job.url) || !locationOk(job, s)) continue;
       let score = keywordScore(job.title, s);
       if (score === 0) continue;
       const ai = await llmScore(job, s);          // null when no LLM configured
@@ -185,11 +195,11 @@ async function runScan(manual = false) {
 
       const tab = await chrome.tabs.create({ url: job.url, active: false });
       pendingJobs.set(tab.id, job);
-      appliedSet.add(job.url);                    // don't reopen while pending
+      seenSet.add(job.url);                       // don't reopen while pending
       opened++;
     }
   }
-  await save({ applied: [...appliedSet].slice(-2000) });
+  await save({ seen: [...seenSet].slice(-2000) });
 }
 
 // ───────────────────────── auto-apply orchestration ─────────────────────────
@@ -218,7 +228,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     } else if (msg.type === "GET_SETTINGS") {
       sendResponse(await getState());
     } else if (msg.type === "APPLY_DONE") {
-      await bumpApplied(msg.url);
+      await bumpApplied(msg.url, msg.submitted);
       chrome.notifications.create({
         type: "basic", iconUrl: "icons/icon128.png",
         title: msg.submitted ? "Application submitted" : "Application filled (review it)",
