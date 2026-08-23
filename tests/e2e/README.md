@@ -54,6 +54,17 @@ Console errors and uncaught exceptions are captured throughout; job-board noise
 (React hydration, font preloads, the site's own 401s) is filtered out so only
 our failures surface.
 
+## Testing with Claude for Chrome
+
+The automated harness runs in a throwaway browser with no logins, so it stops
+where a site asks who you are. For logged-in LinkedIn Easy Apply, a Workday
+tenant you have an account with, or an actual Submit — use your own browser.
+
+**[CLAUDE_IN_CHROME.md](CLAUDE_IN_CHROME.md)** has a paste-ready prompt that
+walks Claude for Chrome through the same checklist, including the regression
+checks for bugs already fixed (consent fields, work authorization, resume
+attach, fill-vs-applied accounting).
+
 ## Environment escape hatches
 
 - `LLA_E2E_CHROME=/path/to/chrome` — use a specific browser binary

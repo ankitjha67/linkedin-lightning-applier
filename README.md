@@ -582,6 +582,10 @@ Exit code is `0` only when no bugs are found, so it can gate CI. This harness
 caught four real bugs, including a Greenhouse consent question being
 auto-answered with the notice period.
 
+For logged-in flows the harness can't reach (LinkedIn Easy Apply, a Workday
+tenant, an actual Submit), `tests/e2e/CLAUDE_IN_CHROME.md` has a paste-ready
+prompt for driving the same checklist with Claude for Chrome in your own browser.
+
 ## Production Hardening
 
 The bot includes 4 hardening modules for reliable 24/7 operation:
