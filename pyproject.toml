@@ -40,6 +40,8 @@ anthropic = ["anthropic>=0.25.0"]
 documents = ["fpdf2>=2.7.0", "python-docx>=1.0.0"]
 # ATS text-layer extraction for the `lla docs` check (pdftotext is used first if present)
 ats = ["pdfminer.six>=20221105"]
+# Excel accounts sheet for the credential vault (CSV fallback without it)
+excel = ["openpyxl>=3.1.0"]
 # Web dashboard + SaaS web app + metrics endpoint
 web = ["flask>=3.0.0"]
 # Model Context Protocol server (Claude Code / Claude Desktop control)
@@ -53,6 +55,7 @@ all = [
     "python-docx>=1.0.0",
     "flask>=3.0.0",
     "mcp>=1.0.0",
+    "openpyxl>=3.1.0",
 ]
 dev = ["pytest>=8.0", "ruff>=0.4"]
 

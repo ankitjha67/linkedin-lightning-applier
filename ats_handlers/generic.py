@@ -28,11 +28,46 @@ class AccountMixin:
     #: config key under external_apply.ats_accounts (defaults to handler name)
     account_key: str = ""
 
-    def _creds(self):
+    def _creds(self, driver=None, job_url: str = ""):
+        """Credentials for this site: config first, then the credential vault.
+
+        The vault mints a unique strong password per HOST and saves it to the
+        accounts sheet, so registering on a board nobody configured still works.
+        """
         key = self.account_key or self.name
         acct = self.ats_accounts.get(key, {}) or {}
         email = acct.get("email") or self.personal.get("email", "")
-        return email, acct.get("password", "")
+        password = acct.get("password", "")
+        if password:
+            from credential_vault import password_is_strong
+            if password_is_strong(password):
+                return email, password
+            log.warning("   %s: configured password too weak — generating one", self.name)
+
+        host = ""
+        if driver is not None:
+            try:
+                from urllib.parse import urlparse
+                host = urlparse(driver.current_url).netloc.lower()
+            except Exception:
+                host = ""
+        vault = self._vault()
+        if vault and host:
+            cred = vault.get_or_create(host, ats=self.name, job_url=job_url, email=email)
+            if cred:
+                return cred["email"], cred["password"]
+        return email, password
+
+    def _vault(self):
+        if getattr(self, "_vault_obj", "unset") == "unset":
+            self._vault_obj = None
+            try:
+                from credential_vault import CredentialVault
+                v = CredentialVault(self.cfg)
+                self._vault_obj = v if (v.enabled and v.auto_register) else None
+            except Exception:
+                self._vault_obj = None
+        return self._vault_obj
 
     def _auth_present(self, driver) -> bool:
         from selenium.webdriver.common.by import By
@@ -43,9 +78,10 @@ class AccountMixin:
         """If a login/registration wall is showing, get past it. Return True if clear."""
         if not self._auth_present(driver):
             return True
-        email, password = self._creds()
+        email, password = self._creds(driver)
         if not email or not password:
-            log.warning(f"   {self.name}: login required but no ats_accounts.{self.account_key or self.name} configured")
+            log.warning("   %s: login required but no credentials available "
+                        "(set personal.email, or enable credential_vault)", self.name)
             return False
 
         from selenium.webdriver.common.by import By
@@ -67,7 +103,16 @@ class AccountMixin:
             automation_ids=["createAccount", "signIn", "login", "register"],
         )
         time.sleep(2.5)
-        return not self._auth_present(driver)
+        ok = not self._auth_present(driver)
+        vault = self._vault()
+        if vault:
+            try:
+                from urllib.parse import urlparse
+                host = urlparse(driver.current_url).netloc.lower()
+                vault.mark(host, "registered" if ok else "auth_failed")
+            except Exception:
+                pass
+        return ok
 
 
 class SinglePageHandler(ATSHandler):

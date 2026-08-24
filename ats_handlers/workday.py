@@ -18,6 +18,7 @@ Nothing here hard-codes a company: give it any ``*.myworkdayjobs.com`` URL.
 """
 
 import logging
+import re
 import time
 from urllib.parse import urlparse
 
@@ -49,7 +50,7 @@ class WorkdayHandler(ATSHandler):
 
         # 2. Authenticate (create account or sign in) if the tenant demands it.
         if self._needs_auth(driver):
-            if not self._authenticate(driver):
+            if not self._authenticate(driver, job_context.get("url", "")):
                 log.warning("   workday: could not create/sign into account")
                 return False
             time.sleep(2)
@@ -73,51 +74,144 @@ class WorkdayHandler(ATSHandler):
         except Exception:
             return ""
 
-    def _account(self, driver) -> dict:
+    def _account(self, driver, job_url: str = "") -> dict:
         """Resolve credentials for this tenant.
 
-        Looks up ``external_apply.ats_accounts.workday``. Supports either a flat
-        ``{email, password}`` reused across all tenants, or a per-tenant map keyed
-        by host. Falls back to the personal email so we can at least create one.
+        Precedence: explicit per-tenant config > flat config > the credential
+        vault, which MINTS a unique strong password per tenant and saves it to
+        the accounts sheet. That last path is what makes self-registration
+        autonomous — nothing has to be pre-configured.
+
+        The returned dict carries `status`: "new" (register) or "existing"
+        (sign in with the stored password).
         """
         acct = dict(self.ats_accounts.get("workday", {}) or {})
         tenant = self._tenant(driver)
-        # Per-tenant override wins if present.
-        by_tenant = acct.get("tenants", {})
+        by_tenant = acct.get("tenants", {}) or {}
         if tenant in by_tenant:
             acct.update(by_tenant[tenant])
         acct.setdefault("email", self.personal.get("email", ""))
+        acct.setdefault("status", "existing")
+
+        # A configured password is only usable if it meets ATS complexity rules.
+        configured = acct.get("password", "")
+        if configured:
+            from credential_vault import password_is_strong
+            if password_is_strong(configured):
+                return acct
+            log.warning("   workday: configured password is too weak for %s — "
+                        "using a generated one", tenant)
+
+        vault = self._vault()
+        if vault and tenant:
+            cred = vault.get_or_create(tenant, ats="workday", job_url=job_url,
+                                       email=acct.get("email", ""))
+            if cred:
+                acct.update({"email": cred["email"], "password": cred["password"],
+                             "status": cred.get("status", "new")})
         return acct
 
-    def _needs_auth(self, driver) -> bool:
-        from selenium.webdriver.common.by import By
-        for aid in ("email", "password", "createAccountLink", "signInLink",
-                    "createAccountCheckbox"):
-            if driver.find_elements(By.CSS_SELECTOR, f'[data-automation-id="{aid}"]'):
-                return True
-        # Text fallback
-        try:
-            body = driver.find_element(By.TAG_NAME, "body").text.lower()[:1500]
-            return "create account" in body or "sign in" in body
-        except Exception:
-            return False
+    def _vault(self):
+        """Lazy credential vault (None when disabled or unavailable)."""
+        if getattr(self, "_vault_obj", "unset") == "unset":
+            self._vault_obj = None
+            try:
+                from credential_vault import CredentialVault
+                v = CredentialVault(self.cfg)
+                self._vault_obj = v if (v.enabled and v.auto_register) else None
+            except Exception as exc:
+                log.debug("   workday: vault unavailable (%s)", exc)
+        return self._vault_obj
 
-    def _authenticate(self, driver) -> bool:
-        """Create an account, or sign in if one already exists for this tenant."""
-        acct = self._account(driver)
+    @staticmethod
+    def _any_visible(driver, selector: str) -> bool:
+        from selenium.webdriver.common.by import By
+        try:
+            for el in driver.find_elements(By.CSS_SELECTOR, selector):
+                try:
+                    if el.is_displayed():
+                        return True
+                except Exception:
+                    continue
+        except Exception:
+            pass
+        return False
+
+    def _credential_inputs_present(self, driver) -> bool:
+        """A place to TYPE credentials — the only honest sign we're still at auth.
+
+        Deliberately excludes "Sign In" / "Create Account" LINKS: Workday keeps
+        those in the header after a successful registration, and counting them
+        made every successful account creation report as failed.
+        """
+        for aid in ("email", "password", "verifyPassword"):
+            if self._any_visible(driver, f'[data-automation-id="{aid}"]'):
+                return True
+        return self._any_visible(driver, "input[type='password']")
+
+    def _needs_auth(self, driver) -> bool:
+        """Is there an auth wall to get past BEFORE applying?
+
+        Here a link counts: a page offering only "Create Account" is still a
+        wall. Use `_auth_complete()` to judge whether auth SUCCEEDED.
+        """
+        if self._credential_inputs_present(driver):
+            return True
+        for aid in ("createAccountLink", "signInLink", "createAccountCheckbox"):
+            if self._any_visible(driver, f'[data-automation-id="{aid}"]'):
+                return True
+        return False
+
+    def _auth_complete(self, driver) -> bool:
+        """Did we get PAST auth? True when no credential input is left on screen."""
+        return not self._credential_inputs_present(driver)
+
+    def _authenticate(self, driver, job_url: str = "") -> bool:
+        """Register on this tenant, or sign in when we already have an account.
+
+        With the credential vault enabled this needs nothing pre-configured:
+        a unique strong password is minted per tenant, the account is created,
+        and the credential is written to the accounts sheet so you can log in
+        yourself later.
+        """
+        tenant = self._tenant(driver)
+        acct = self._account(driver, job_url=job_url)
         email = acct.get("email", "")
         password = acct.get("password", "")
+        vault = self._vault()
         if not email or not password:
-            log.warning("   workday: no ats_accounts.workday email/password configured")
+            log.warning("   workday: no credentials available for %s — set "
+                        "personal.email or external_apply.ats_accounts.workday",
+                        tenant or "this tenant")
             return False
 
-        # Prefer creating an account (idempotent-ish: Workday tells us if it exists).
-        if self._open_create_account(driver):
-            if self._submit_create_account(driver, email, password):
+        known = acct.get("status") == "existing"
+        # A known account signs in first; an unknown one registers first.
+        # NOTE: label each attempt explicitly — `attempt is self._try_register`
+        # is always False, because attribute access mints a new bound method.
+        attempts = [("signed_in", self._try_sign_in), ("registered", self._try_register)] \
+            if known else [("registered", self._try_register), ("signed_in", self._try_sign_in)]
+        for outcome, attempt in attempts:
+            if attempt(driver, email, password):
+                if vault:
+                    vault.mark(tenant, outcome)
+                log.info("   ✅ workday: %s on %s",
+                         "registered" if outcome == "registered" else "signed in", tenant)
                 return True
-            # Account probably already exists on this tenant → sign in instead.
-            log.info("   workday: account exists, switching to sign-in")
+        if vault:
+            vault.mark(tenant, "auth_failed",
+                       "could not register or sign in — may need email verification")
+        log.warning("   workday: could not register or sign in on %s", tenant)
+        return False
 
+    def _try_register(self, driver, email: str, password: str) -> bool:
+        if not self._open_create_account(driver):
+            return False
+        if self._account_exists_error(driver):
+            return False
+        return self._submit_create_account(driver, email, password)
+
+    def _try_sign_in(self, driver, email: str, password: str) -> bool:
         return self._sign_in(driver, email, password)
 
     def _open_create_account(self, driver) -> bool:
@@ -159,7 +253,7 @@ class WorkdayHandler(ATSHandler):
         # Success = we left the auth screen and no duplicate-email error is shown.
         if self._auth_error(driver):
             return False
-        return clicked and not self._needs_auth(driver)
+        return clicked and self._auth_complete(driver)
 
     def _sign_in(self, driver, email: str, password: str) -> bool:
         # Make sure we're on the sign-in form, not create.
@@ -171,15 +265,57 @@ class WorkdayHandler(ATSHandler):
         self.click_button(driver, labels=["sign in"],
                           automation_ids=["signInSubmitButton", "click_filter"])
         time.sleep(2.5)
-        return not self._needs_auth(driver) and not self._auth_error(driver)
+        return self._auth_complete(driver) and not self._auth_error(driver)
+
+    # Text that appears in role="alert" but is guidance, not failure. Treating
+    # these as errors aborted account creation on tenants that show live
+    # password-policy hints.
+    _HINT_RE = re.compile(
+        r"must (contain|be at least|include)|password (must|should)|"
+        r"at least \d+ character|1 number|one number|special character|"
+        r"case letter|requirements?:", re.I)
+    _REAL_ERROR_RE = re.compile(
+        r"already (exists|in use|registered)|invalid|incorrect|does not match|"
+        r"could not|unable to|failed|try again|not recognized|required field", re.I)
 
     def _auth_error(self, driver) -> bool:
+        """True only for a genuine failure, not for policy hints."""
         from selenium.webdriver.common.by import By
         try:
             for e in driver.find_elements(
                     By.CSS_SELECTOR,
                     '[data-automation-id="errorMessage"], [role="alert"]'):
-                if e.is_displayed() and e.text.strip():
+                try:
+                    if not e.is_displayed():
+                        continue
+                    txt = (e.text or "").strip()
+                except Exception:
+                    continue
+                if not txt:
+                    continue
+                if self._REAL_ERROR_RE.search(txt):
+                    log.info("   workday auth error: %s", txt[:120])
+                    return True
+                if self._HINT_RE.search(txt):
+                    continue          # policy guidance — not a failure
+                # An explicit errorMessage node with unclassified text is an error.
+                if (e.get_attribute("data-automation-id") or "") == "errorMessage":
+                    log.info("   workday auth error: %s", txt[:120])
+                    return True
+        except Exception:
+            pass
+        return False
+
+    def _account_exists_error(self, driver) -> bool:
+        """Specifically: this email is already registered on this tenant."""
+        from selenium.webdriver.common.by import By
+        try:
+            for e in driver.find_elements(
+                    By.CSS_SELECTOR,
+                    '[data-automation-id="errorMessage"], [role="alert"]'):
+                if e.is_displayed() and re.search(
+                        r"already (exists|in use|registered)|account.*exists",
+                        e.text or "", re.I):
                     return True
         except Exception:
             pass

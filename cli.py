@@ -64,6 +64,11 @@ def _load_config(path: str = "config.yaml") -> dict:
         sys.exit(1)
     with open(cfg_path, "r", encoding="utf-8") as fh:
         cfg = yaml.safe_load(fh) or {}
+    try:
+        from cv_profile import enrich_config_profile
+        cfg = enrich_config_profile(cfg)
+    except Exception as exc:
+        log.debug("CV profile enrichment skipped: %s", exc)
     return cfg
 
 

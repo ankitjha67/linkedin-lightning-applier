@@ -377,6 +377,27 @@ rag:
   max_context: 3                # max similar Q&As injected per prompt
 
 # ═══════════════════════════════════════════════════════════════
+# CREDENTIAL VAULT — self-registration on ATS portals (Workday, iCIMS, Taleo…)
+# Those platforms make you create an account per company before you can apply.
+# With this on, the bot mints a UNIQUE strong password per tenant, registers,
+# and writes the credentials to data/ats_accounts.xlsx (CSV if openpyxl is
+# missing) plus the ats_credentials table — so you can log in yourself later.
+#
+# SECURITY: that sheet holds working logins in PLAIN TEXT. data/ is gitignored
+# and the file is written owner-only. Use an email you actually check (tenants
+# send verification links), and never reuse an important password here.
+# ═══════════════════════════════════════════════════════════════
+credential_vault:
+  enabled: true
+  auto_register: true          # false = only use credentials you configured
+  email: ""                    # blank -> personal.email
+  password_length: 16
+  use_plus_addressing: false   # true -> you+nvidia@gmail.com per tenant
+                               # (unique logins, one inbox — some ATS reject "+")
+  output_dir: "data"
+  sheet_name: "ats_accounts"   # -> data/ats_accounts.xlsx
+
+# ═══════════════════════════════════════════════════════════════
 # EXTERNAL APPLY — Fill ATS forms on 12 platforms
 # ═══════════════════════════════════════════════════════════════
 external_apply:

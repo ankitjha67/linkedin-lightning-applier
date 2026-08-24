@@ -73,8 +73,9 @@ The bot runs in a continuous loop. Every cycle:
 - **ATS CV Template Engine** (`cv_template_engine.py`) — ATS-optimized HTML→PDF CV generation with keyword injection from JD.
 - **Pipeline State Machine** (`pipeline_manager.py`) — Formal lifecycle states (discovered → evaluated → applied → interviewing → offer) with enforced transitions.
 
-### Application Craftsmanship (11 — new in v2.9)
+### Application Craftsmanship (12 — new in v2.9)
 - **Browser Extension (24/7 in-browser autopilot)** (`browser_extension/`) — Chrome/Edge MV3 companion that runs in your **real logged-in browser** (no chromedriver): alarm-driven board scanning, LLM relevance scoring with **NVIDIA NIM / frontier / local Ollama-LM Studio** provider placeholders, per-country work-auth answers, learned-answer reuse, resume auto-attach, fill-only or auto-submit.
+- **Autonomous ATS Self-Registration** (`credential_vault.py`) — Workday/iCIMS/Taleo make you create an account per company. The bot mints a **unique strong password per tenant**, registers, and writes the credentials to **`data/ats_accounts.xlsx`** (CSV fallback) plus SQLite — so you can log in yourself. Re-visits sign in instead of registering twice. Candidate details are derived straight from your CV (`cv_profile.py`) when config is blank.
 - **Environment Doctor** (`env_doctor.py` / `lla doctor --fix`) — Auto-detects your Python and **installed Chrome version** (Windows registry / macOS / Linux), installs missing packages one-by-one, and reports optional tools. Browser launch self-heals a Chrome↔driver mismatch (re-pins, then auto-upgrades the driver) so it never dies on a version error.
 - **Country-Aware Work Authorization** (`work_auth.py`) — "Authorized to work?" / "Need sponsorship?" answered from the JOB's country vs your citizenship + visas held. Countries you're not authorized in automatically answer No / sponsorship-required. Deterministic, zero tokens, and never cached across borders.
 - **Batch External Apply** (`apply_urls.py`) — Submit ATS applications from a plain URL list (txt/CSV/JSON) in a real browser, **no LinkedIn required**. URL-dedup against SQLite; `--dry-run` previews ATS detection.

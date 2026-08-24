@@ -117,10 +117,13 @@ class TestWorkdayAccount(unittest.TestCase):
     """Per-tenant credential resolution for Workday."""
 
     def _handler(self, ats_accounts, personal=None):
+        import tempfile
         cfg = {
             "personal": personal or {},
             "application": {},
             "external_apply": {"ats_accounts": ats_accounts},
+            # Isolate the credential vault so unit tests never touch data/.
+            "credential_vault": {"output_dir": tempfile.mkdtemp()},
         }
         return WorkdayHandler(None, cfg)
 
@@ -130,26 +133,35 @@ class TestWorkdayAccount(unittest.TestCase):
         self.assertEqual(h._tenant(d), "nvidia.wd5.myworkdayjobs.com")
 
     def test_flat_credentials_reused(self):
-        h = self._handler({"workday": {"email": "a@b.com", "password": "pw123"}})
+        # A STRONG configured password is used verbatim across tenants.
+        h = self._handler({"workday": {"email": "a@b.com", "password": "Str0ng!Pass99"}})
         acct = h._account(_FakeDriver("https://x.wd1.myworkdayjobs.com/j"))
         self.assertEqual(acct["email"], "a@b.com")
-        self.assertEqual(acct["password"], "pw123")
+        self.assertEqual(acct["password"], "Str0ng!Pass99")
+
+    def test_weak_configured_password_is_replaced(self):
+        # A weak one would be rejected by the ATS, so the vault mints a real one.
+        from credential_vault import password_is_strong
+        h = self._handler({"workday": {"email": "a@b.com", "password": "pw123"}})
+        acct = h._account(_FakeDriver("https://x.wd1.myworkdayjobs.com/j"))
+        self.assertNotEqual(acct["password"], "pw123")
+        self.assertTrue(password_is_strong(acct["password"]))
 
     def test_personal_email_fallback(self):
-        h = self._handler({"workday": {"password": "pw"}},
+        h = self._handler({"workday": {"password": "Str0ng!Pass99"}},
                           personal={"email": "me@personal.com"})
         acct = h._account(_FakeDriver("https://x.wd1.myworkdayjobs.com/j"))
         self.assertEqual(acct["email"], "me@personal.com")
 
     def test_per_tenant_override(self):
         h = self._handler({"workday": {
-            "email": "default@b.com", "password": "pw",
+            "email": "default@b.com", "password": "Default!Pass99",
             "tenants": {"special.wd5.myworkdayjobs.com":
-                        {"email": "special@b.com", "password": "sp"}},
+                        {"email": "special@b.com", "password": "Special!Pass99"}},
         }})
         acct = h._account(_FakeDriver("https://special.wd5.myworkdayjobs.com/j"))
         self.assertEqual(acct["email"], "special@b.com")
-        self.assertEqual(acct["password"], "sp")
+        self.assertEqual(acct["password"], "Special!Pass99")
 
 
 class TestAccountMixin(unittest.TestCase):
