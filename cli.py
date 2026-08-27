@@ -884,6 +884,91 @@ def cmd_export(args):
     print(f"  Data exported to {os.path.abspath(export_dir)}/")
 
 
+def cmd_reset(args):
+    """Clear part of the local database, with a backup and a confirmation."""
+    _print_banner("Reset")
+    from state_reset import SCOPE_ORDER, format_plan, format_scopes, reset
+
+    if args.list or not args.what:
+        print(format_scopes())
+        print("\n  lla reset --what cache          # preview")
+        print("  lla reset --what cache --yes    # do it")
+        return 0 if args.list else 2
+
+    if args.what not in SCOPE_ORDER + ["all"]:
+        print(f"  '{args.what}' is not a scope.")
+        print(format_scopes())
+        return 1
+
+    cfg = _load_config(args.config)
+    state = _init_state(cfg)
+    db_path = cfg.get("state", {}).get("db_path", "data/state.db")
+
+    result = reset(state, args.what, db_path=db_path, dry_run=not args.yes)
+    print(format_plan(result))
+    return 0
+
+
+def cmd_add_template(args):
+    """Check a CV template, then install it."""
+    _print_banner("CV Template")
+    from cv_templates import (
+        DEFAULT_TEMPLATE_PATH,
+        check_renders,
+        check_template,
+        default_template,
+        format_report,
+        install,
+        installed_templates,
+    )
+
+    if args.show_default:
+        print(default_template())
+        return 0
+
+    if args.list or not args.template:
+        found = installed_templates(args.dir)
+        if found:
+            print(f"  Templates in {args.dir}/:")
+            for p in found:
+                print(f"    {p}")
+        else:
+            print(f"  No templates in {args.dir}/ — the built-in one is in use.")
+        print("\n  Start from the built-in template:")
+        print("    lla add-template --show-default > mine.html")
+        print("  then check and install it:")
+        print("    lla add-template mine.html")
+        return 0 if args.list else 2
+
+    path = Path(args.template)
+    if not path.exists():
+        print(f"  {args.template} does not exist.")
+        return 1
+    html = path.read_text(encoding="utf-8", errors="replace")
+
+    report = check_template(html)
+    renders_ok, render_msg = check_renders(html)
+    if not renders_ok:
+        report.error(render_msg, "every placeholder must be substitutable")
+    print(f"  {args.template}")
+    print(format_report(report, render_msg if renders_ok else ""))
+
+    if not report.ok:
+        print("\n  Nothing was installed — a template with a mistyped")
+        print("  placeholder renders fine and silently drops that section.")
+        return 1
+    if args.check_only:
+        print(f"\n  Checked only. Install it with:  lla add-template {args.template}")
+        return 0
+
+    ok, msg = install(args.template, args.dest or DEFAULT_TEMPLATE_PATH)
+    print(f"\n  {msg}")
+    if ok:
+        print("  Set cv_template.template_path in config.yaml to use it,")
+        print("  and cv_template.enabled: true if it is not already on.")
+    return 0 if ok else 1
+
+
 def cmd_sync_email(args):
     """Propose outcomes from recruiter email — approval-gated, source-cited."""
     _print_banner("Inbox → Outcomes")
@@ -1214,6 +1299,8 @@ def build_parser() -> argparse.ArgumentParser:
               lla sync-email                  Propose outcomes from recruiter email
               lla expand                       Enrich profile from your public presence
               lla robots https://site/jobs     What robots.txt permits (RFC 9309)
+              lla reset --what cache           Clear regenerable state (backed up)
+              lla add-template mine.html      Check + install a CV template
               lla setup                        Interactive setup
         """),
     )
@@ -1366,6 +1453,21 @@ def build_parser() -> argparse.ArgumentParser:
     # --- stats ---
     subs.add_parser("stats", help="Show application statistics")
 
+    # --- reset ---
+    p = subs.add_parser("reset", help="Clear part of the local database (backed up first)")
+    p.add_argument("--what", help="cache, analysis, queues, contacts, outcomes, applications, all")
+    p.add_argument("--yes", action="store_true", help="Actually delete (default is a preview)")
+    p.add_argument("--list", action="store_true", help="Describe the scopes")
+
+    # --- add-template ---
+    p = subs.add_parser("add-template", help="Check and install a custom CV template")
+    p.add_argument("template", nargs="?", help="Path to an HTML template")
+    p.add_argument("--dest", help="Where to install it (default templates/cv-template.html)")
+    p.add_argument("--dir", default="templates", help="Where templates live")
+    p.add_argument("--check-only", action="store_true", help="Check without installing")
+    p.add_argument("--show-default", action="store_true", help="Print the built-in template")
+    p.add_argument("--list", action="store_true", help="List installed templates")
+
     # --- sync-email ---
     p = subs.add_parser("sync-email", help="Propose outcomes from recruiter email (approval-gated)")
     p.add_argument("--apply", action="store_true", help="Record the proposals (default: high confidence only)")
@@ -1445,6 +1547,8 @@ COMMAND_MAP = {
     "stats": cmd_stats,
     "outcome": cmd_outcome,
     "sync-email": cmd_sync_email,
+    "reset": cmd_reset,
+    "add-template": cmd_add_template,
     "expand": cmd_expand,
     "robots": cmd_robots,
     "setup": cmd_setup,

@@ -19,3 +19,5 @@ tests
 profile_expand.py
 outcomes.py
 gmail_sync.py
+state_reset.py
+cv_templates.py

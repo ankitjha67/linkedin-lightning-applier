@@ -24,6 +24,12 @@ jobs:
       - name: Guard credentials, .gitignore and pre-approved permissions
         run: python tools/security_guards.py
 
+      # .claude/ skills and commands are executable documentation: Claude reads
+      # them and acts on them. Nothing imports them, so a stale path in one
+      # fails silently, at the moment someone is trying to use it.
+      - name: Check Claude skills and slash commands
+        run: python tools/lint_skills.py
+
   test:
     name: Tests (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
