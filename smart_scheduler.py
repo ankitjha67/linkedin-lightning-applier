@@ -91,7 +91,7 @@ class SmartScheduler:
         responses = self.state.conn.execute("""
             SELECT company,
                    COUNT(*) as total,
-                   SUM(CASE WHEN response_type IN ('callback','interview','offer') THEN 1 ELSE 0 END) as positive
+                   SUM(CASE WHEN response_type IN ('callback','assessment','interview','offer') THEN 1 ELSE 0 END) as positive
             FROM response_tracking
             GROUP BY company
         """).fetchall()
@@ -228,7 +228,7 @@ class SmartScheduler:
         # Responses per search term
         responses = self.state.conn.execute("""
             SELECT a.search_term,
-                   SUM(CASE WHEN r.response_type IN ('callback','interview','offer') THEN 1 ELSE 0 END) as positive
+                   SUM(CASE WHEN r.response_type IN ('callback','assessment','interview','offer') THEN 1 ELSE 0 END) as positive
             FROM applied_jobs a
             JOIN response_tracking r ON a.job_id = r.job_id
             WHERE a.search_term != ''

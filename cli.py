@@ -860,6 +860,113 @@ def cmd_export(args):
     print(f"  Data exported to {os.path.abspath(export_dir)}/")
 
 
+def cmd_outcome(args):
+    """Record what actually happened to an application."""
+    from outcomes import (
+        ALL_TYPES,
+        BY_KEY,
+        OUTCOME_TYPES,
+        find_applications,
+        format_pending,
+        format_summary,
+        normalise_type,
+        outcome_summary,
+        parse_when,
+        pending_applications,
+        record_outcome,
+        sweep_ghosted,
+    )
+
+    cfg = _load_config(args.config)
+    state = _init_state(cfg)
+
+    if args.types:
+        _print_banner("Outcome types")
+        for t in OUTCOME_TYPES:
+            flag = "positive" if t.positive else ("final" if t.terminal else "")
+            print(f"  {t.key:<12} {t.help}")
+            if flag:
+                print(f"               [{flag}]")
+        return 0
+
+    if args.summary:
+        _print_banner("Application Funnel")
+        print(format_summary(outcome_summary(state)))
+        return 0
+
+    if args.ghost_sweep:
+        _print_banner("Ghost Sweep")
+        rows = sweep_ghosted(state, args.days, dry_run=not args.yes)
+        if not rows:
+            print(f"\n  Nothing has been silent for {args.days}+ days.")
+            return 0
+        if not args.yes:
+            print(f"\n  {len(rows)} application(s) silent for {args.days}+ days:\n")
+            for r in rows[:20]:
+                print(f"    {r['days_quiet']:>5.0f}d  {(r['company'] or '?')[:30]:<30} "
+                      f"{(r['title'] or '?')[:34]}")
+            if len(rows) > 20:
+                print(f"    … and {len(rows) - 20} more.")
+            print(f"\n  Re-run with --yes to mark these {len(rows)} as ghosted.")
+        else:
+            print(f"\n  Marked {len(rows)} application(s) as ghosted.")
+        return 0
+
+    # No query and no type: show what is still waiting.
+    if not args.query:
+        _print_banner("Open Applications")
+        print(format_pending(pending_applications(state, args.quiet_days)))
+        return 0
+
+    matches = find_applications(state, args.query)
+    if not matches:
+        print(f"\n  No application matches {args.query!r}.")
+        print("  Run  lla outcome  with no arguments to see what is open.")
+        return 1
+    if len(matches) > 1 and not args.job_id:
+        print(f"\n  {args.query!r} matches {len(matches)} applications:\n")
+        for m in matches[:15]:
+            print(f"    {(m['company'] or '?')[:28]:<28} {(m['title'] or '?')[:38]}")
+            print(f"      applied {m['applied_at']}   id: {m['job_id']}")
+        print("\n  Narrow it down, or pick one with --job-id <id>.")
+        return 1
+    job = matches[0] if not args.job_id else next(
+        (m for m in matches if m["job_id"] == args.job_id), None)
+    if job is None:
+        print(f"\n  --job-id {args.job_id!r} is not among the matches.")
+        return 1
+
+    if not args.type:
+        print(f"\n  {job['title']} @ {job['company']}  (applied {job['applied_at']})")
+        print("\n  What happened? Pass --type with one of:")
+        for t in OUTCOME_TYPES:
+            print(f"    {t.key:<12} {t.help}")
+        return 2
+
+    key = normalise_type(args.type)
+    if not key:
+        print(f"\n  {args.type!r} is not an outcome. Use one of: {', '.join(ALL_TYPES)}")
+        return 1
+
+    when = None
+    if args.when:
+        when = parse_when(args.when)
+        if when is None:
+            print(f"\n  Could not read the date {args.when!r}.")
+            print("  Try 2026-08-14, 14/08/2026, '3 days ago', yesterday, or today.")
+            return 1
+
+    ok, msg = record_outcome(state, job["job_id"], key, notes=args.notes or "",
+                             when=when, allow_duplicate=args.force)
+    print(f"\n  {msg}")
+    if not ok:
+        return 1
+    if BY_KEY[key].positive:
+        print("  Every model that predicts ghosting, response time and success")
+        print("  learns from this. Thank you for closing the loop.")
+    return 0
+
+
 def cmd_expand(args):
     """Enrich the profile from public sources, citing every finding."""
     _print_banner("Profile Expansion")
@@ -1027,6 +1134,7 @@ def build_parser() -> argparse.ArgumentParser:
               lla validate-config              Check config.yaml
               lla skill-gaps                   Skill gap report
               lla salary --role "Engineer"     Salary benchmarks
+              lla outcome "Monzo" --type interview   Record what happened
               lla expand                       Enrich profile from your public presence
               lla robots https://site/jobs     What robots.txt permits (RFC 9309)
               lla setup                        Interactive setup
@@ -1179,6 +1287,23 @@ def build_parser() -> argparse.ArgumentParser:
     # --- stats ---
     subs.add_parser("stats", help="Show application statistics")
 
+    # --- outcome ---
+    p = subs.add_parser("outcome", help="Record what happened to an application (closes the learning loop)")
+    p.add_argument("query", nargs="?", help="Company, title, job id or URL")
+    p.add_argument("--type", help="callback, assessment, interview, offer, rejection, withdrawn, ghosted")
+    p.add_argument("--notes", help="Anything worth remembering")
+    p.add_argument("--when", help="When it happened (2026-08-14, '3 days ago', yesterday)")
+    p.add_argument("--job-id", help="Exact job id, when the query matches several")
+    p.add_argument("--force", action="store_true", help="Record an outcome already logged")
+    p.add_argument("--summary", action="store_true", help="Show the application funnel")
+    p.add_argument("--types", action="store_true", help="List the outcome types")
+    p.add_argument("--quiet-days", type=int, default=0,
+                   help="Only list applications silent this many days")
+    p.add_argument("--ghost-sweep", action="store_true",
+                   help="Mark long-silent applications as ghosted")
+    p.add_argument("--days", type=int, default=45, help="Silence threshold for --ghost-sweep")
+    p.add_argument("--yes", action="store_true", help="Actually apply --ghost-sweep")
+
     # --- expand ---
     p = subs.add_parser("expand", help="Enrich your profile from your public online presence")
     p.add_argument("--url", action="append", help="Extra source URL (repeatable)")
@@ -1231,6 +1356,7 @@ COMMAND_MAP = {
     "validate-config": cmd_validate_config,
     "export": cmd_export,
     "stats": cmd_stats,
+    "outcome": cmd_outcome,
     "expand": cmd_expand,
     "robots": cmd_robots,
     "setup": cmd_setup,

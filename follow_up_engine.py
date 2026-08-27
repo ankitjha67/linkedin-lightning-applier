@@ -126,7 +126,7 @@ class FollowUpEngine:
             if self.skip_if_responded:
                 response = self.state.conn.execute("""
                     SELECT 1 FROM response_tracking
-                    WHERE job_id=? AND response_type IN ('callback', 'interview', 'offer')
+                    WHERE job_id=? AND response_type IN ('callback', 'assessment', 'interview', 'offer')
                 """, (job_id,)).fetchone()
                 if response:
                     self.state.update_follow_up_status(fu["id"], "skipped")
@@ -246,7 +246,7 @@ This is a {'gentle follow-up' if touch == 2 else 'final follow-up'} message."""
             FROM follow_up_queue f
             JOIN response_tracking r ON f.job_id = r.job_id
             WHERE f.status='sent'
-              AND r.response_type IN ('callback', 'interview', 'offer')
+              AND r.response_type IN ('callback', 'assessment', 'interview', 'offer')
         """).fetchone()["c"]
 
         return {

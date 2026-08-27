@@ -16,7 +16,9 @@ from typing import Optional
 
 log = logging.getLogger("lla.success_tracker")
 
-RESPONSE_TYPES = ("callback", "interview", "rejection", "offer", "ghosted")
+# Canonical vocabulary lives in outcomes.py; kept in sync by a test.
+RESPONSE_TYPES = ("callback", "assessment", "interview", "offer",
+                  "rejection", "withdrawn", "ghosted")
 
 
 class SuccessTracker:
@@ -126,7 +128,7 @@ class SuccessTracker:
             positive = self.state.conn.execute("""
                 SELECT COUNT(*) as c FROM response_tracking
                 WHERE match_score BETWEEN ? AND ?
-                  AND response_type IN ('callback', 'interview', 'offer')
+                  AND response_type IN ('callback', 'assessment', 'interview', 'offer')
             """, (lo, hi)).fetchone()["c"]
             rate = (positive / applied * 100) if applied > 0 else 0
             results[f"score_{label}"] = {
@@ -146,7 +148,7 @@ class SuccessTracker:
             positive = self.state.conn.execute("""
                 SELECT COUNT(*) as c FROM response_tracking
                 WHERE recruiter_messaged = ?
-                  AND response_type IN ('callback', 'interview', 'offer')
+                  AND response_type IN ('callback', 'assessment', 'interview', 'offer')
             """, (messaged,)).fetchone()["c"]
             rate = (positive / max(applied, 1) * 100)
             results[f"recruiter_{label}"] = {
@@ -162,7 +164,7 @@ class SuccessTracker:
             SELECT COUNT(*) as c FROM response_tracking r
             JOIN applied_jobs a ON r.job_id = a.job_id
             WHERE a.resume_version != '' AND a.resume_version IS NOT NULL
-              AND r.response_type IN ('callback', 'interview', 'offer')
+              AND r.response_type IN ('callback', 'assessment', 'interview', 'offer')
         """).fetchone()["c"]
         results["resume_tailored"] = {
             "applied": tailored_applied, "positive_responses": tailored_positive,
@@ -176,7 +178,7 @@ class SuccessTracker:
             SELECT COUNT(*) as c FROM response_tracking r
             JOIN applied_jobs a ON r.job_id = a.job_id
             WHERE (a.resume_version = '' OR a.resume_version IS NULL)
-              AND r.response_type IN ('callback', 'interview', 'offer')
+              AND r.response_type IN ('callback', 'assessment', 'interview', 'offer')
         """).fetchone()["c"]
         results["resume_generic"] = {
             "applied": generic_applied, "positive_responses": generic_positive,
@@ -192,7 +194,7 @@ class SuccessTracker:
                 SELECT COUNT(*) as c FROM response_tracking r
                 JOIN applied_jobs a ON r.job_id = a.job_id
                 WHERE a.visa_sponsorship = ?
-                  AND r.response_type IN ('callback', 'interview', 'offer')
+                  AND r.response_type IN ('callback', 'assessment', 'interview', 'offer')
             """, (visa,)).fetchone()["c"]
             rate = (positive / max(applied, 1) * 100)
             results[f"visa_{label}"] = {
@@ -217,7 +219,7 @@ class SuccessTracker:
         # 6. Top responding companies
         top_companies = self.state.conn.execute("""
             SELECT company, COUNT(*) as responses,
-                   SUM(CASE WHEN response_type IN ('callback','interview','offer') THEN 1 ELSE 0 END) as positive
+                   SUM(CASE WHEN response_type IN ('callback','assessment','interview','offer') THEN 1 ELSE 0 END) as positive
             FROM response_tracking
             GROUP BY company ORDER BY positive DESC LIMIT 10
         """).fetchall()

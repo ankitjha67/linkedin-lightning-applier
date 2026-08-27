@@ -165,7 +165,7 @@ class EmailMonitor:
                         responses.append(response)
 
                         # Also feed into success tracker
-                        if job_id and response_type in ("interview", "positive", "rejection"):
+                        if job_id and response_type in ("interview", "assessment", "positive", "rejection"):
                             self.state.save_response(
                                 job_id=job_id,
                                 company=company,
