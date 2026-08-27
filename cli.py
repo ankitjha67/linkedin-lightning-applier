@@ -860,6 +860,53 @@ def cmd_export(args):
     print(f"  Data exported to {os.path.abspath(export_dir)}/")
 
 
+def cmd_expand(args):
+    """Enrich the profile from public sources, citing every finding."""
+    _print_banner("Profile Expansion")
+    from profile_expand import (
+        apply_findings,
+        discover_sources,
+        expand_profile,
+        format_report,
+        to_json,
+    )
+
+    cfg = _load_config(args.config)
+    extra = list(args.url or [])
+    sources = discover_sources(cfg) + extra
+    if not sources:
+        print("  No public sources found.\n")
+        print("  Add a GitHub, portfolio, Kaggle or Scholar URL to config.yaml")
+        print("  under question_answers, or pass one directly:")
+        print("      lla expand --url https://github.com/you")
+        return 2
+
+    print(f"  Reading {len(sources)} source(s). Every fetch honours robots.txt.\n")
+    report = expand_profile(cfg, extra)
+
+    changes = None
+    write_msg = ""
+    if args.apply:
+        cfg, changes = apply_findings(cfg, report, args.min_confidence)
+        if changes:
+            from profile_expand import write_config_additions
+            ok, write_msg = write_config_additions(args.config, changes)
+            if not ok:
+                print(f"\n  {write_msg}")
+                return 1
+
+    if args.json:
+        print(to_json(report, changes))
+    else:
+        print(format_report(report, changes))
+        if changes:
+            print(f"\n  Wrote {len(changes)} field(s). {write_msg}")
+        elif not args.apply and report.findings:
+            print("\n  Nothing was written. Re-run with --apply to fill blank")
+            print("  config fields with these findings; your own answers are kept.")
+    return 0
+
+
 def cmd_robots(args):
     """Report what each site's robots.txt permits for the URLs given."""
     _print_banner("robots.txt compliance (RFC 9309)")
@@ -980,6 +1027,7 @@ def build_parser() -> argparse.ArgumentParser:
               lla validate-config              Check config.yaml
               lla skill-gaps                   Skill gap report
               lla salary --role "Engineer"     Salary benchmarks
+              lla expand                       Enrich profile from your public presence
               lla robots https://site/jobs     What robots.txt permits (RFC 9309)
               lla setup                        Interactive setup
         """),
@@ -1131,6 +1179,16 @@ def build_parser() -> argparse.ArgumentParser:
     # --- stats ---
     subs.add_parser("stats", help="Show application statistics")
 
+    # --- expand ---
+    p = subs.add_parser("expand", help="Enrich your profile from your public online presence")
+    p.add_argument("--url", action="append", help="Extra source URL (repeatable)")
+    p.add_argument("--apply", action="store_true",
+                   help="Fill BLANK config fields with the findings (never overwrites)")
+    p.add_argument("--min-confidence", default="medium",
+                   choices=["low", "medium", "high"],
+                   help="Lowest confidence --apply will write (default: medium)")
+    p.add_argument("--json", action="store_true", help="Machine-readable output")
+
     # --- robots ---
     p = subs.add_parser("robots", help="Check URLs against each site's robots.txt (RFC 9309)")
     p.add_argument("urls", nargs="*", help="One or more absolute URLs")
@@ -1173,6 +1231,7 @@ COMMAND_MAP = {
     "validate-config": cmd_validate_config,
     "export": cmd_export,
     "stats": cmd_stats,
+    "expand": cmd_expand,
     "robots": cmd_robots,
     "setup": cmd_setup,
 }
