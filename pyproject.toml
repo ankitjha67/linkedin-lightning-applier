@@ -40,6 +40,8 @@ anthropic = ["anthropic>=0.25.0"]
 documents = ["fpdf2>=2.7.0", "python-docx>=1.0.0"]
 # ATS text-layer extraction for the `lla docs` check (pdftotext is used first if present)
 ats = ["pdfminer.six>=20221105"]
+# Rendered-layout verification for the CV PDF (`tools/verify_pdf.py`)
+pdf = ["pypdf>=4.0.0"]
 # Excel accounts sheet for the credential vault (CSV fallback without it)
 excel = ["openpyxl>=3.1.0"]
 # Web dashboard + SaaS web app + metrics endpoint
@@ -56,6 +58,7 @@ all = [
     "flask>=3.0.0",
     "mcp>=1.0.0",
     "openpyxl>=3.1.0",
+    "pypdf>=4.0.0",
 ]
 dev = ["pytest>=8.0", "ruff>=0.4"]
 

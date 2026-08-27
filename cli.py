@@ -219,6 +219,30 @@ def cmd_docs(args):
     print(f"  CV         : {res['cv_tex']}" + (f"  →  {res['cv_pdf']}" if res.get('cv_pdf') else ""))
     print(f"  Cover      : {res['cover_tex']}" + (f"  →  {res['cover_pdf']}" if res.get('cover_pdf') else ""))
     print()
+
+    # The ATS check below reads the text. This reads the page — a job title
+    # stranded at the foot of a page with its bullets overleaf passes every
+    # text check there is, and is the first thing a human reader notices.
+    if res.get("cv_pdf"):
+        try:
+            from tools.verify_pdf import verify
+            layout, pages, _err = verify(res["cv_pdf"],
+                                         expected_pages=args.max_pages)
+            errors = [i for i in layout if i.severity == "error"]
+            state = "OK" if not errors else "REVIEW"
+            print(f"  Layout     : {_color(state, 'green' if not errors else 'yellow')}"
+                  f"  ({len(pages)} page(s))")
+            for issue in layout:
+                mark = "✗" if issue.severity == "error" else "⚠"
+                print(f"    {mark} {issue.message}")
+                if issue.fix:
+                    print(f"      → {issue.fix}")
+            if errors and res.get("cv_tex"):
+                print(f"      → python tools/verify_pdf.py {res['cv_pdf']} "
+                      f"--tex {res['cv_tex']} --fix   (guards entries, then rebuild)")
+            print()
+        except Exception as exc:
+            log.debug("layout check skipped: %s", exc)
     color = "green" if report["passed"] else "yellow"
     print(f"  ATS check  : {_color(('PASS' if report['passed'] else 'REVIEW'), color)}  "
           f"(keyword coverage {report['coverage_pct']}%, min {report['min_coverage']}%)")
@@ -1211,6 +1235,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--company", help="Company name")
     p.add_argument("--min-coverage", dest="min_coverage", type=int, default=60,
                    help="Min ATS keyword-coverage %% to pass (default 60)")
+    p.add_argument("--max-pages", dest="max_pages", type=int, default=2,
+                   help="Page budget for the rendered CV (default 2)")
 
     # --- screen ---
     p = subs.add_parser("screen", help="Simulate the employer-side AI resume screen for a JD")
