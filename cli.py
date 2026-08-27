@@ -860,6 +860,58 @@ def cmd_export(args):
     print(f"  Data exported to {os.path.abspath(export_dir)}/")
 
 
+def cmd_sync_email(args):
+    """Propose outcomes from recruiter email — approval-gated, source-cited."""
+    _print_banner("Inbox → Outcomes")
+    import json as _json
+
+    from gmail_sync import (
+        apply_proposals,
+        fetch_via_imap,
+        format_proposals,
+        propose_outcomes,
+        summarise,
+    )
+
+    cfg = _load_config(args.config)
+    state = _init_state(cfg)
+
+    if args.emails_file:
+        try:
+            with open(args.emails_file, encoding="utf-8") as fh:
+                emails = _json.load(fh)
+        except Exception as exc:
+            print(f"  Could not read {args.emails_file}: {exc}")
+            return 1
+        if not isinstance(emails, list):
+            print("  Expected a JSON list of messages.")
+            return 1
+    else:
+        emails = fetch_via_imap(cfg, state, days=args.days)
+        if not emails:
+            print("  No mailbox configured, or nothing to read.\n")
+            print("  Either enable email_monitor in config.yaml, or hand this")
+            print("  messages from a client that already has Gmail access:")
+            print("      lla sync-email --emails-file messages.json")
+            print("  where each entry is {id, from, subject, body, date}.")
+            return 2
+
+    proposals = propose_outcomes(state, emails)
+    applied = None
+    if args.apply:
+        applied = apply_proposals(
+            state, proposals,
+            min_confidence="low" if args.all else "high")
+
+    if args.json:
+        print(_json.dumps({"summary": summarise(proposals, applied),
+                           "proposals": [p.as_dict() for p in proposals]},
+                          indent=2))
+    else:
+        print(format_proposals(proposals, applied))
+    return 0
+
+
 def cmd_outcome(args):
     """Record what actually happened to an application."""
     from outcomes import (
@@ -1135,6 +1187,7 @@ def build_parser() -> argparse.ArgumentParser:
               lla skill-gaps                   Skill gap report
               lla salary --role "Engineer"     Salary benchmarks
               lla outcome "Monzo" --type interview   Record what happened
+              lla sync-email                  Propose outcomes from recruiter email
               lla expand                       Enrich profile from your public presence
               lla robots https://site/jobs     What robots.txt permits (RFC 9309)
               lla setup                        Interactive setup
@@ -1287,6 +1340,14 @@ def build_parser() -> argparse.ArgumentParser:
     # --- stats ---
     subs.add_parser("stats", help="Show application statistics")
 
+    # --- sync-email ---
+    p = subs.add_parser("sync-email", help="Propose outcomes from recruiter email (approval-gated)")
+    p.add_argument("--apply", action="store_true", help="Record the proposals (default: high confidence only)")
+    p.add_argument("--all", action="store_true", help="With --apply, include uncertain matches too")
+    p.add_argument("--days", type=int, default=90, help="How far back to read (IMAP only)")
+    p.add_argument("--emails-file", help="JSON list of {id,from,subject,body,date} from any client")
+    p.add_argument("--json", action="store_true", help="Machine-readable output")
+
     # --- outcome ---
     p = subs.add_parser("outcome", help="Record what happened to an application (closes the learning loop)")
     p.add_argument("query", nargs="?", help="Company, title, job id or URL")
@@ -1357,6 +1418,7 @@ COMMAND_MAP = {
     "export": cmd_export,
     "stats": cmd_stats,
     "outcome": cmd_outcome,
+    "sync-email": cmd_sync_email,
     "expand": cmd_expand,
     "robots": cmd_robots,
     "setup": cmd_setup,

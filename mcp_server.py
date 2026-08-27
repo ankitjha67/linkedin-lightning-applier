@@ -33,6 +33,11 @@ from tools_layer import (
     tool_visa_sponsors,
     tool_export_csv,
     tool_pipeline_summary,
+    tool_propose_outcomes_from_email,
+    tool_apply_email_outcomes,
+    tool_record_outcome,
+    tool_open_applications,
+    tool_outcome_summary,
 )
 
 mcp = FastMCP("linkedin-lightning-applier")
@@ -149,3 +154,52 @@ def pipeline_summary() -> str:
 
 if __name__ == "__main__":
     mcp.run()
+
+
+@mcp.tool()
+def propose_outcomes_from_email(emails_json: str) -> str:
+    """Read recruiter emails and propose application outcomes WITHOUT recording
+    anything. Pass a JSON list of messages: [{id, from, subject, body, date}].
+    Returns each proposed outcome with the application it matched, a confidence
+    level, and why it matched. Use this when the user asks you to check their
+    inbox for job-application news. Always show the proposals to the user and
+    get their approval before calling apply_email_outcomes."""
+    return tool_propose_outcomes_from_email(emails_json)
+
+
+@mcp.tool()
+def apply_email_outcomes(emails_json: str, approved_email_ids: str) -> str:
+    """Record ONLY the email-derived outcomes the user has explicitly approved.
+    Pass the same messages JSON plus a JSON list of the approved email ids.
+    Nothing else is recorded regardless of confidence. Each stored outcome
+    cites the email it came from. Never call this without the user's approval
+    of the specific proposals."""
+    return tool_apply_email_outcomes(emails_json, approved_email_ids)
+
+
+@mcp.tool()
+def record_outcome(query: str, outcome: str, notes: str = "",
+                   when: str = "") -> str:
+    """Record what happened to a job application. `query` is a company, job
+    title, job id or URL; `outcome` is one of callback, assessment, interview,
+    offer, rejection, withdrawn, ghosted. `when` accepts '2026-08-14',
+    '3 days ago' or 'yesterday' — use it whenever the user says the event
+    happened earlier, so response times stay accurate. Use this when the user
+    mentions an interview, offer or rejection."""
+    return tool_record_outcome(query, outcome, notes, when)
+
+
+@mcp.tool()
+def open_applications(quiet_days: int = 0) -> str:
+    """List applications with no final outcome yet, longest silence first. Set
+    quiet_days to only show those silent that many days. Use this when the user
+    asks what they are still waiting on or who to chase."""
+    return tool_open_applications(quiet_days)
+
+
+@mcp.tool()
+def outcome_summary() -> str:
+    """The application funnel: applied, engaged, interviews, offers, rejections,
+    ghosted and still-open, with the average days to a first response. Use this
+    when the user asks how their applications are converting."""
+    return tool_outcome_summary()
