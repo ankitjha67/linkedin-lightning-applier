@@ -15,7 +15,10 @@ page in a REAL browser, with a REAL credential vault writing a real xlsx.
 
 Nothing is mocked except the tenant hostname (mapped to a local HTTPS server).
 """
-import os, shutil, sys, tempfile
+import os
+import shutil
+import sys
+import tempfile
 
 os.environ["PATH"] = ":".join(p for p in os.environ["PATH"].split(":") if "node22" not in p)
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
@@ -118,7 +121,7 @@ other = "salesforce.wd12.myworkdayjobs.com"
 d3 = browser()
 try:
     d3.get(URL)
-    d3.execute_script(f"history.replaceState(0,0,'/x'); ")
+    d3.execute_script("history.replaceState(0,0,'/x'); ")
     h3 = get_handler("workday", None, CFG)
     a1 = h3._account(d3)
     # simulate a different tenant by asking the vault directly

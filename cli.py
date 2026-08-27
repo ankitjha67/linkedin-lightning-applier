@@ -860,6 +860,40 @@ def cmd_export(args):
     print(f"  Data exported to {os.path.abspath(export_dir)}/")
 
 
+def cmd_robots(args):
+    """Report what each site's robots.txt permits for the URLs given."""
+    _print_banner("robots.txt compliance (RFC 9309)")
+    from tools.robots_check import DEFAULT_AGENT, check_urls
+
+    urls = list(args.urls or [])
+    if args.file:
+        try:
+            urls += [ln.strip() for ln in open(args.file, encoding="utf-8")
+                     if ln.strip() and not ln.strip().startswith("#")]
+        except OSError as exc:
+            print(f"  Could not read {args.file}: {exc}")
+            return 1
+    if not urls:
+        print("  Give one or more URLs, or --file with one URL per line.")
+        return 2
+
+    agent = args.agent or DEFAULT_AGENT
+    results = check_urls(urls, agent)
+    denied = [(u, v) for u, v in results if not v.allowed]
+
+    for url, v in results:
+        print(f"  {'ALLOW' if v.allowed else 'DENY '}  {url}")
+        print(f"          {v.rule or v.reason}")
+
+    print(f"\n  agent: {agent}")
+    print(f"  {len(results) - len(denied)} allowed, {len(denied)} not allowed")
+    if denied:
+        print("\n  'Not allowed' also covers robots.txt files that could not be read —")
+        print("  permission is never assumed. Review these before fetching them")
+        print("  automatically; a site that has said no should be left alone.")
+    return 1 if denied else 0
+
+
 def cmd_stats(args):
     """Show application statistics."""
     _print_banner("Application Statistics")
@@ -946,6 +980,7 @@ def build_parser() -> argparse.ArgumentParser:
               lla validate-config              Check config.yaml
               lla skill-gaps                   Skill gap report
               lla salary --role "Engineer"     Salary benchmarks
+              lla robots https://site/jobs     What robots.txt permits (RFC 9309)
               lla setup                        Interactive setup
         """),
     )
@@ -1096,6 +1131,12 @@ def build_parser() -> argparse.ArgumentParser:
     # --- stats ---
     subs.add_parser("stats", help="Show application statistics")
 
+    # --- robots ---
+    p = subs.add_parser("robots", help="Check URLs against each site's robots.txt (RFC 9309)")
+    p.add_argument("urls", nargs="*", help="One or more absolute URLs")
+    p.add_argument("--file", help="File with one URL per line")
+    p.add_argument("--agent", help="Product token to check as (default: LightningApplier)")
+
     # --- setup ---
     subs.add_parser("setup", help="Interactive setup wizard")
 
@@ -1132,6 +1173,7 @@ COMMAND_MAP = {
     "validate-config": cmd_validate_config,
     "export": cmd_export,
     "stats": cmd_stats,
+    "robots": cmd_robots,
     "setup": cmd_setup,
 }
 
@@ -1152,7 +1194,11 @@ def main():
         sys.exit(1)
 
     try:
-        handler(args)
+        # A handler that returns an int is reporting an exit code (0 = success).
+        # Returning None — what most handlers do — still exits 0.
+        code = handler(args)
+        if isinstance(code, int) and code != 0:
+            sys.exit(code)
     except KeyboardInterrupt:
         print("\n  Interrupted.")
         sys.exit(130)
