@@ -87,6 +87,15 @@ The bot runs in a continuous loop. Every cycle:
 - **Any-Job-Board Generic Apply** — URLs matching no known ATS fall back to a best-effort generic handler that sweeps the form and can **register/sign in** with shared credentials (`ats_accounts.generic`). Disable with `external_apply.allow_generic_fallback: false`.
 - **GitHub Signal Enrichment** (`github_enrich.py`) — Classifies your repos like a screener (open-source vs self-project vs fork) and ranks which projects to feature per posting.
 
+### Closing the Loop (new in v2.10)
+- **Outcome Recording** (`outcomes.py` / `lla outcome`) — Eight modules learn from `response_tracking`: the ghost predictor, SLA tracker, forensics, smart scheduler, apply timing, follow-up engine, success tracker and resume A/B testing. Nothing was writing it except the email monitor, so a recruiter who *phones* you taught them nothing. Record an outcome against the application it belongs to, dated when it actually happened; list what is still open by longest silence; sweep long-quiet applications to ghosted.
+- **Inbox → Outcomes** (`gmail_sync.py` / `lla sync-email`) — Reads recruiter email and **proposes** outcomes; recording is a separate, explicit step, and every stored outcome cites the sender, subject and date it came from. Matching is conservative on purpose — a misattributed outcome is worse than a missing one. Works from IMAP, or from any MCP client that already has Gmail access, so this project holds no Gmail token of its own.
+- **Profile Expansion** (`profile_expand.py` / `lla expand`) — Enriches your profile from GitHub, a portfolio, Scholar and Kaggle. Every finding cites its source URL, `--apply` only fills fields you left blank, and config additions are spliced in as text so the template's 428 explanatory comments survive.
+- **Rendered-Layout Verification** (`tools/verify_pdf.py`) — `lla docs` checks a CV's text; this checks the page. Catches a job title stranded at the foot of a page with its bullets overleaf, a third page carrying two lines, and text outside the margins that ATS parsers drop. `--fix` inserts `\needspace` into the `.tex`. Runs automatically after `lla docs` compiles.
+- **robots.txt Compliance** (`tools/robots_check.py` / `lla robots`) — RFC 9309, hand-parsed because the stdlib drops rules after a blank line and fails *open*. Longest-match wins, ties go to Disallow, and anything unconfirmed is a no. It reports; it never overrides a site that has said no.
+- **Supply-Chain Guards** (`tools/security_guards.py`, `tools/lint_skills.py`) — CI-enforced checks that `.gitignore` still protects every credential path, that nothing secret is tracked, that no pre-approved permissions or hooks have appeared, and that the shipped Claude skills and slash commands still point at files that exist.
+- **Scoped Reset + Template Checking** (`lla reset`, `lla add-template`) — Clear one scope of the 48-table database (previewed, backed up, `--yes` required) instead of deleting `state.db`. Check a custom CV template before installing it, because a mistyped `{{EXPERINCE}}` renders happily and silently drops every job from your CV.
+
 ### Core Foundations
 - **AI Form Filling** — 13 LLM providers: OpenAI, Anthropic Claude, Google Gemini, DeepSeek, Groq, Together, OpenRouter (free model chain), xAI Grok, Mistral, Claude CLI (no API key), Ollama (local), LM Studio (local), and `custom` — any OpenAI-compatible endpoint (vLLM, llama.cpp server, LocalAI). Answers cached in SQLite.
 - **Recruiter Tracking** — Names, titles, and LinkedIn URLs from "Meet the hiring team" sections.
@@ -552,12 +561,21 @@ Extension points: ATS handlers, job platforms, resume templates, role archetypes
 ## Testing
 
 ```bash
-# Run all 396 tests
-python -m unittest discover -s tests -v
+# Run all 727 tests
+python tests/run_tests.py
 
 # Run specific test module
-python -m unittest tests.test_state -v
-python -m unittest tests.test_salary_intel -v
+python -m unittest tests.test_outcomes -v
+python -m unittest tests.test_robots_check -v
+```
+
+Everything CI enforces, before you push:
+
+```bash
+python tests/run_tests.py            # the whole suite
+python tools/security_guards.py      # no secrets escaping into git
+python tools/lint_skills.py          # .claude/ skills and commands still valid
+python -m ruff check $(cat .ruff-paths | tr '\n' ' ')
 ```
 
 Tests cover: State class (49 tables, CRUD, migration, CSV export), match scoring (JSON parsing, bounds, thresholds), salary parsing (10+ currencies), dedup engine (fingerprinting, cross-platform matching), apply timing (freshness scoring, queue reordering), JD change tracking (snapshot capture, change detection), and config validation (missing sections, conflicts, numeric bounds).
