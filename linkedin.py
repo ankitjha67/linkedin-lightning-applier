@@ -167,6 +167,13 @@ def _type_into_css(driver, css_selector: str, value: str, timeout: float = 5.0) 
         return False
 
 
+# Below this length a field is a name, an email or a phone number — nobody
+# composes those, so typing them instantly is not the tell. Above it the value
+# is prose someone would have written, and `send_keys(whole_string)` delivering
+# a 400-character answer in one event is the least human thing the bot does.
+HUMAN_TYPING_MIN_CHARS = 80
+
+
 def _fill_field(driver, field, value: str) -> bool:
     """Fill a field reliably with value. Tries send_keys, then ActionChains."""
     try:
@@ -174,7 +181,14 @@ def _fill_field(driver, field, value: str) -> bool:
         time.sleep(0.2)
         field.send_keys(Keys.CONTROL + "a")
         time.sleep(0.1)
-        field.send_keys(value)
+        if len(value or "") >= HUMAN_TYPING_MIN_CHARS:
+            try:
+                from human_pacing import type_like_human
+                type_like_human(field, value)
+            except Exception:
+                field.send_keys(value)      # pacing is a nicety, not a blocker
+        else:
+            field.send_keys(value)
         time.sleep(0.3)
         actual = field.get_attribute("value") or ""
         if actual == value:

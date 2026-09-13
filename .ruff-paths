@@ -21,3 +21,4 @@ outcomes.py
 gmail_sync.py
 state_reset.py
 cv_templates.py
+human_pacing.py

@@ -884,6 +884,46 @@ def cmd_export(args):
     print(f"  Data exported to {os.path.abspath(export_dir)}/")
 
 
+def cmd_pacing(args):
+    """Print the humanised-behaviour protocol for a browser-driving agent."""
+    import re as _re
+
+    from human_pacing import active_hours_warning, render_protocol
+
+    protocol = render_protocol(args.profile)
+
+    if args.write:
+        doc = Path("tests/e2e/CLAUDE_IN_CHROME.md")
+        if not doc.exists():
+            print(f"  {doc} does not exist.")
+            return 1
+        text = doc.read_text(encoding="utf-8")
+        pattern = _re.compile(
+            r"(<!-- BEGIN GENERATED PACING[^>]*-->\n).*?(\n<!-- END GENERATED PACING -->)",
+            _re.S)
+        if not pattern.search(text):
+            print(f"  {doc} has no generated-pacing markers.")
+            return 1
+        doc.write_text(
+            pattern.sub(lambda m: m.group(1) + protocol + m.group(2), text),
+            encoding="utf-8")
+        print(f"  Updated the pacing block in {doc}")
+        return 0
+
+    if not args.quiet:
+        _print_banner(f"Humanised pacing — {args.profile}")
+    print(protocol)
+
+    # Per-click pacing cannot fix a schedule that no person keeps.
+    try:
+        warning = active_hours_warning(_load_config(args.config))
+    except SystemExit:
+        warning = ""
+    if warning and not args.quiet:
+        print(f"\n  ⚠ {warning}")
+    return 0
+
+
 def cmd_autopilot(args):
     """Keep the bot running around the clock, and never run two of it."""
     from tools.autopilot import format_status, start, status, stop, watch
@@ -1331,6 +1371,7 @@ def build_parser() -> argparse.ArgumentParser:
               lla expand                       Enrich profile from your public presence
               lla robots https://site/jobs     What robots.txt permits (RFC 9309)
               lla autopilot status            Is the 24/7 bot up? applies today?
+              lla pacing                      Humanised protocol for Claude for Chrome
               lla reset --what cache           Clear regenerable state (backed up)
               lla add-template mine.html      Check + install a CV template
               lla setup                        Interactive setup
@@ -1485,6 +1526,14 @@ def build_parser() -> argparse.ArgumentParser:
     # --- stats ---
     subs.add_parser("stats", help="Show application statistics")
 
+    # --- pacing ---
+    p = subs.add_parser("pacing", help="Humanised-behaviour protocol for Claude for Chrome")
+    p.add_argument("--profile", default="normal", choices=["careful", "normal", "fast"],
+                   help="How brisk (default: normal)")
+    p.add_argument("--write", action="store_true",
+                   help="Regenerate the block in tests/e2e/CLAUDE_IN_CHROME.md")
+    p.add_argument("--quiet", action="store_true", help="Protocol only, no banner")
+
     # --- autopilot ---
     p = subs.add_parser("autopilot", help="Run the bot 24/7: status, start, stop, restart, watch")
     p.add_argument("action", nargs="?", default="status",
@@ -1585,6 +1634,7 @@ COMMAND_MAP = {
     "stats": cmd_stats,
     "outcome": cmd_outcome,
     "sync-email": cmd_sync_email,
+    "pacing": cmd_pacing,
     "autopilot": cmd_autopilot,
     "reset": cmd_reset,
     "add-template": cmd_add_template,
