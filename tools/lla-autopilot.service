@@ -1,0 +1,64 @@
+# systemd unit — run LinkedIn Lightning Applier 24/7 on a Linux server.
+#
+# On a machine with systemd this is a better fit than cron: it supervises the
+# process directly instead of polling every few minutes, so a crash is noticed
+# immediately rather than up to N minutes later, and the restart back-off is
+# the init system's job rather than ours.
+#
+# Install (as the user who owns the checkout — NOT root: the bot needs your
+# browser profile and your config):
+#
+#   mkdir -p ~/.config/systemd/user
+#   sed "s|/path/to/repo|$PWD|g" tools/lla-autopilot.service \
+#       > ~/.config/systemd/user/lla-autopilot.service
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now lla-autopilot
+#   loginctl enable-linger "$USER"      # keep it running when you log out
+#
+#   systemctl --user status lla-autopilot
+#   journalctl --user -u lla-autopilot -f
+#   systemctl --user stop lla-autopilot
+#
+# Do not run this AND the cron autopilot: both would try to start the bot.
+# The lock stops a second copy actually launching, but you would get a restart
+# fight in the logs. Pick one.
+
+[Unit]
+Description=LinkedIn Lightning Applier — 24/7 autopilot
+Documentation=https://github.com/ankitjha67/linkedin-lightning-applier
+# The bot needs a network and, unless headless, a graphical session.
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/path/to/repo
+
+# API keys live in .env (gitignored), not in this unit file — a unit file is
+# world-readable and ends up in backups and support pastes.
+EnvironmentFile=-/path/to/repo/.env
+
+ExecStart=/path/to/repo/venv/bin/python /path/to/repo/main.py -c /path/to/repo/config.yaml
+
+# main.py handles SIGTERM: it closes Chrome and the database cleanly. Give it
+# time to, rather than leaving a locked SQLite file and an orphaned browser.
+KillSignal=SIGTERM
+TimeoutStopSec=30
+KillMode=mixed
+
+Restart=always
+RestartSec=30
+# If it dies 5 times in 10 minutes, something is wrong that restarting cannot
+# fix — a bad config, a Chrome/driver mismatch, a login LinkedIn is refusing.
+# Stop and make it visible instead of hammering LinkedIn from a crash loop.
+StartLimitIntervalSec=600
+StartLimitBurst=5
+
+StandardOutput=append:/path/to/repo/logs/autopilot.log
+StandardError=append:/path/to/repo/logs/autopilot.log
+
+# The daily application cap lives in SQLite (daily_stats), so restarts do not
+# reset it — a crash loop still stops at max_applies_per_day.
+
+[Install]
+WantedBy=default.target

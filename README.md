@@ -481,9 +481,52 @@ or an unparseable evaluation is never blocked.
 
 A targeted, company-first discovery mode that complements LinkedIn/Google search. Scans a curated `companies.json` (30+ companies, extensible) via **free** ATS JSON APIs (Greenhouse, Lever, Ashby) with HTML-scraping fallback — no paid API needed. Enable with `careers_scanner.enabled: true`. Scores every role with your match scorer and surfaces the top matches.
 
+## Run It 24/7 (autopilot)
+
+The bot's own loop is already continuous — it scans every `scan_interval_minutes`,
+and `active_hours_start: 0` / `active_hours_end: 24` means round the clock. What
+a long run needs is not a scheduler but a **supervisor**: something to start it
+after a reboot, restart it when Chrome takes the process down with it, and make
+sure a second copy never starts.
+
+```bash
+# Linux / macOS — installs @reboot + a liveness check every 5 minutes
+./tools/setup_autopilot.sh            # or: ./tools/setup_autopilot.sh 10
+lla autopilot status                  # up? for how long? applies today?
+./tools/setup_autopilot.sh --remove
+```
+
+```powershell
+# Windows — the same two triggers, via Task Scheduler
+powershell -ExecutionPolicy Bypass -File tools\setup_autopilot.ps1
+python tools\autopilot.py status
+powershell -ExecutionPolicy Bypass -File tools\setup_autopilot.ps1 -Remove
+```
+
+On a Linux server `tools/lla-autopilot.service` is a better fit than cron: systemd
+supervises the process directly, so a crash is noticed immediately rather than at
+the next tick.
+
+**Never two bots.** `autopilot start` and `autopilot watch` take a lock, so a cron
+tick that fires while the bot is still running does nothing. Two Chrome sessions
+signed into one LinkedIn account apply to the same jobs twice and look exactly
+like automation — and a naive cron entry causes that by default.
+
+**Restarting is safe** because the daily cap lives in SQLite, not in memory:
+`daily_stats` is read fresh every cycle, so a bot that restarts forty times still
+stops at `max_applies_per_day`. If it keeps dying within two minutes of starting,
+autopilot backs off for 30 minutes instead of hammering LinkedIn from a crash
+loop — a restart will not fix a bad config, a Chrome/driver mismatch, or a login
+LinkedIn is refusing.
+
+Running continuously raises your profile with LinkedIn's automation detection.
+`max_applies_per_day` (default 40) and the human-pacing delays are what keep that
+in check — autopilot deliberately does not override them. See `TERMS_OF_USE.md`.
+
 ## Daily Automation
 
-Run one scan cycle per day on a schedule (instead of the continuous loop):
+Prefer this if you want one scan a day rather than continuous operation (the two
+are mutually exclusive — `setup_autopilot.sh` refuses to install alongside it):
 
 ```bash
 # 1. Put your API key in .env (gitignored)

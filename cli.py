@@ -884,6 +884,37 @@ def cmd_export(args):
     print(f"  Data exported to {os.path.abspath(export_dir)}/")
 
 
+def cmd_autopilot(args):
+    """Keep the bot running around the clock, and never run two of it."""
+    from tools.autopilot import format_status, start, status, stop, watch
+
+    action = (args.action or "status").lower()
+    if action == "status":
+        _print_banner("Autopilot")
+        print(format_status(status(args.config)))
+        return 0
+    if action == "start":
+        ok, msg = start(args.config)
+        print(f"  {msg}")
+        return 0 if ok else 1
+    if action == "stop":
+        ok, msg = stop()
+        print(f"  {msg}")
+        return 0 if ok else 1
+    if action == "restart":
+        stop()
+        ok, msg = start(args.config, reason="restart")
+        print(f"  {msg}")
+        return 0 if ok else 1
+    if action == "watch":
+        outcome, msg = watch(args.config)
+        if outcome != "running":
+            print(f"  autopilot {outcome}: {msg}")
+        return 0 if outcome in ("running", "started") else 1
+    print(f"  Unknown action {action!r}. Use: status, start, stop, restart, watch")
+    return 2
+
+
 def cmd_reset(args):
     """Clear part of the local database, with a backup and a confirmation."""
     _print_banner("Reset")
@@ -1299,6 +1330,7 @@ def build_parser() -> argparse.ArgumentParser:
               lla sync-email                  Propose outcomes from recruiter email
               lla expand                       Enrich profile from your public presence
               lla robots https://site/jobs     What robots.txt permits (RFC 9309)
+              lla autopilot status            Is the 24/7 bot up? applies today?
               lla reset --what cache           Clear regenerable state (backed up)
               lla add-template mine.html      Check + install a CV template
               lla setup                        Interactive setup
@@ -1453,6 +1485,12 @@ def build_parser() -> argparse.ArgumentParser:
     # --- stats ---
     subs.add_parser("stats", help="Show application statistics")
 
+    # --- autopilot ---
+    p = subs.add_parser("autopilot", help="Run the bot 24/7: status, start, stop, restart, watch")
+    p.add_argument("action", nargs="?", default="status",
+                   choices=["status", "start", "stop", "restart", "watch"],
+                   help="Default: status")
+
     # --- reset ---
     p = subs.add_parser("reset", help="Clear part of the local database (backed up first)")
     p.add_argument("--what", help="cache, analysis, queues, contacts, outcomes, applications, all")
@@ -1547,6 +1585,7 @@ COMMAND_MAP = {
     "stats": cmd_stats,
     "outcome": cmd_outcome,
     "sync-email": cmd_sync_email,
+    "autopilot": cmd_autopilot,
     "reset": cmd_reset,
     "add-template": cmd_add_template,
     "expand": cmd_expand,
