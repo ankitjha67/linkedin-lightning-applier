@@ -513,6 +513,29 @@ truncated, or summarised away mid-session:
 
 The agent never clicks the final submit. See `tests/e2e/CLAUDE_IN_CHROME.md`.
 
+## Signing In Without a Password in Your Config
+
+`browser.user_data_dir` points the bot at a Chrome profile you have already
+signed into, so no LinkedIn password ever goes in `config.yaml`. Use a
+**dedicated** profile, not your everyday one: Chrome locks a profile to one
+instance, so sharing it means whichever starts second fails — and that would be
+the bot, silently, at 3am.
+
+```bash
+lla profile --create     # make chrome-lla-profile/ (already gitignored)
+lla profile --login      # opens Chrome on it; sign in to LinkedIn once
+lla profile --check      # confirms the session, and when it expires
+```
+
+`--check` verifies the profile really holds a LinkedIn session, by reading
+cookie **names** out of Chrome's database — opened read-only and immutable, so
+it is safe while Chrome has the file. Cookie values are encrypted and are never
+touched: `li_at`'s presence and expiry is all that is needed.
+
+`lla autopilot preflight` runs the same check, so a profile with no session — or
+an expired one — stops the bot before it starts rather than after it has spent
+three minutes asking for a manual login into a window nobody can see.
+
 ## Run It 24/7 (autopilot)
 
 The bot's own loop is already continuous — it scans every `scan_interval_minutes`,

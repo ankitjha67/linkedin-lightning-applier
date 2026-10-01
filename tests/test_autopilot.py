@@ -366,7 +366,10 @@ class TestUnattendedLoginPreflight(SandboxedAutopilot):
         self._write("browser:\n  headless: true\n")
         fixes = [f for p, f in ap.preflight() if "cannot sign in" in p]
         self.assertTrue(fixes)
-        self.assertIn("user_data_dir", fixes[0])
+        # Both routes: credentials in config, or a signed-in profile. The
+        # profile route names the command rather than the config key, because
+        # the directory on its own is not enough — it needs a session in it.
+        self.assertIn("lla profile --login", fixes[0])
         self.assertIn("linkedin.email", fixes[0])
 
     def test_credentials_satisfy_it(self):

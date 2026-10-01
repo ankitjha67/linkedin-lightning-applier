@@ -884,6 +884,73 @@ def cmd_export(args):
     print(f"  Data exported to {os.path.abspath(export_dir)}/")
 
 
+def cmd_profile(args):
+    """Create, verify, or sign into the Chrome profile the bot uses."""
+    from browser_profile import (
+        create,
+        default_profile_dir,
+        format_state,
+        launch_for_login,
+        login_command,
+        profile_state,
+        usable,
+        wait_for_login,
+    )
+
+    path = args.path
+    if not path:
+        try:
+            cfg = _load_config(args.config)
+            path = ((cfg.get("browser", {}) or {}).get("user_data_dir") or "").strip()
+        except SystemExit:
+            path = ""
+    path = path or str(default_profile_dir(Path.cwd()))
+
+    if args.create:
+        _print_banner("Chrome profile")
+        ok, msg = create(path)
+        print(f"  {msg}")
+        if ok:
+            print("\n  Add this to config.yaml:")
+            print(f"    browser:\n      user_data_dir: \"{path}\"")
+            print("\n  Then sign in once:  lla profile --login")
+        return 0 if ok else 1
+
+    if args.login:
+        _print_banner("Sign in to LinkedIn, once")
+        create(path)
+        proc, command = launch_for_login(path, args.chrome or "")
+        if proc is None:
+            print("  Could not start a browser here. Run this yourself:\n")
+            print("    " + " ".join(command))
+            print("\n  Sign in to LinkedIn, then close the window and run:")
+            print("    lla profile --check")
+            return 1
+        print("  A Chrome window is opening on the bot's own profile.")
+        print("  Sign in to LinkedIn there, then leave it — I am watching for")
+        print(f"  the session. Waiting up to {args.timeout // 60} minutes.\n")
+        session = wait_for_login(path, timeout_sec=args.timeout)
+        if session.get("present"):
+            days = session.get("days_left")
+            print("  Signed in." + (f" The session lasts about {days:.0f} day(s)."
+                                     if days else ""))
+            print("  You can close that window; the bot reuses the profile.")
+            print(f"\n  Confirm any time with:  lla profile --check")
+            return 0
+        print("  No LinkedIn session appeared in that time.")
+        print("  Sign in in that window, then run:  lla profile --check")
+        return 1
+
+    _print_banner("Chrome profile")
+    state = profile_state(path)
+    print(format_state(state))
+    if usable(state):
+        print("\n  Ready. The bot can sign in with this profile:")
+        print("    lla autopilot preflight && lla autopilot start")
+        return 0
+    return 1
+
+
 def cmd_chrome_session(args):
     """The end-to-end runbook for a browser agent, with live state in it."""
     import json as _json
@@ -1452,6 +1519,7 @@ def build_parser() -> argparse.ArgumentParser:
               lla sync-email                  Propose outcomes from recruiter email
               lla expand                       Enrich profile from your public presence
               lla robots https://site/jobs     What robots.txt permits (RFC 9309)
+              lla profile --login             Sign a dedicated Chrome profile in once
               lla autopilot status            Is the 24/7 bot up? applies today?
               lla pacing                      Humanised protocol for Claude for Chrome
               lla chrome-session              Runbook for Claude in Chrome to apply end to end
@@ -1609,6 +1677,18 @@ def build_parser() -> argparse.ArgumentParser:
     # --- stats ---
     subs.add_parser("stats", help="Show application statistics")
 
+    # --- profile ---
+    p = subs.add_parser("profile",
+                        help="Create / verify / sign into the Chrome profile the bot uses")
+    p.add_argument("path", nargs="?", help="Profile directory (default: from config)")
+    p.add_argument("--check", action="store_true", help="Report the profile's state (default)")
+    p.add_argument("--create", action="store_true", help="Create the directory")
+    p.add_argument("--login", action="store_true",
+                   help="Open Chrome on it so you sign in once, by hand")
+    p.add_argument("--chrome", help="Path to the Chrome binary, if not auto-detected")
+    p.add_argument("--timeout", type=int, default=300,
+                   help="Seconds to wait for the sign-in (default 300)")
+
     # --- chrome-session ---
     p = subs.add_parser("chrome-session",
                         help="Runbook + live state for a browser agent (Claude in Chrome)")
@@ -1727,6 +1807,7 @@ COMMAND_MAP = {
     "stats": cmd_stats,
     "outcome": cmd_outcome,
     "sync-email": cmd_sync_email,
+    "profile": cmd_profile,
     "chrome-session": cmd_chrome_session,
     "pacing": cmd_pacing,
     "autopilot": cmd_autopilot,

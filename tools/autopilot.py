@@ -276,12 +276,41 @@ def preflight(config: str = "config.yaml") -> list:
     browser = cfg.get("browser", {}) or {}
     linkedin = cfg.get("linkedin", {}) or {}
     has_credentials = bool(linkedin.get("email") and linkedin.get("password"))
-    has_profile = bool((browser.get("user_data_dir") or "").strip())
-    if not has_credentials and not has_profile:
+    profile_dir = (browser.get("user_data_dir") or "").strip()
+    has_profile = bool(profile_dir)
+
+    # A profile only authenticates the bot if it actually holds a LinkedIn
+    # session. Pointing user_data_dir at an empty directory used to pass every
+    # check and then dead-end at the login page, three minutes at a time.
+    profile_signed_in = False
+    if has_profile:
+        try:
+            sys.path.insert(0, str(ROOT))
+            from browser_profile import format_state, profile_state, usable
+            state = profile_state(profile_dir)
+            profile_signed_in = usable(state)
+            if not profile_signed_in:
+                detail = (state.get("session") or {}).get("error", "")
+                problems.append((
+                    f"browser.user_data_dir ({profile_dir}) has no usable "
+                    f"LinkedIn session — {detail}",
+                    "run `lla profile --login` and sign in once; "
+                    "`lla profile --check` confirms it"))
+            elif state.get("locked"):
+                problems.append((
+                    "ADVISORY: that Chrome profile is open in another window",
+                    "Chrome locks a profile to one instance — close it, or the "
+                    "bot will fail to start the browser"))
+            log.debug("profile state: %s", format_state(state))
+        except Exception as exc:
+            log.debug("profile check skipped: %s", exc)
+            profile_signed_in = True        # unknown: do not block on our own bug
+
+    if not has_credentials and not profile_signed_in and not has_profile:
         message = ("no linkedin.email/password and no browser.user_data_dir — "
                    "the bot cannot sign in on its own")
-        fix = ("set linkedin.email and linkedin.password, or point "
-               "browser.user_data_dir at a Chrome profile already signed in")
+        fix = ("set linkedin.email and linkedin.password, or run "
+               "`lla profile --login` to sign a dedicated profile in once")
         if browser.get("headless"):
             problems.append((message + " and headless is on, so the manual "
                              "login it falls back to is impossible", fix))
