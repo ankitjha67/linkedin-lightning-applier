@@ -120,16 +120,33 @@ class WorkAuthorization:
     def __init__(self, cfg: dict):
         wa = (cfg or {}).get("work_authorization", {}) or {}
         self.enabled = bool(wa.get("citizenship") or wa.get("visas"))
+        self.unresolved = []
+
+        # `citizenship` is a list, but the key reads singular and YAML happily
+        # accepts `citizenship: United Kingdom`. Left as a bare string that
+        # iterates character by character, resolving nothing — so every
+        # "authorised to work in X?" answered No and every sponsorship
+        # question answered Yes, on every application, with only a per-letter
+        # warning to show for it. One country given as a string means one
+        # country.
+        raw_citizenship = wa.get("citizenship") or []
+        if isinstance(raw_citizenship, str):
+            raw_citizenship = [raw_citizenship]
+        raw_visas = wa.get("visas") or []
+        if isinstance(raw_visas, (str, dict)):
+            raw_visas = [raw_visas]
+
         self.citizenship = set()
-        for c in wa.get("citizenship", []) or []:
+        for c in raw_citizenship:
             canon = _norm_country(c)
             if canon:
                 self.citizenship.add(canon)
             else:
+                self.unresolved.append(str(c))
                 log.warning("work_authorization: unknown citizenship country %r", c)
         self.visa_countries = set()
         self.visas = []
-        for v in wa.get("visas", []) or []:
+        for v in raw_visas:
             country = v.get("country", "") if isinstance(v, dict) else str(v)
             canon = _norm_country(country)
             if canon:
@@ -137,7 +154,22 @@ class WorkAuthorization:
                 self.visas.append({"country": canon,
                                    "type": (v.get("type", "") if isinstance(v, dict) else "")})
             else:
+                self.unresolved.append(str(country))
                 log.warning("work_authorization: unknown visa country %r", country)
+
+        # Configured, but nothing resolved: answering from this would tell every
+        # employer you cannot work anywhere. Loud, because the failure is silent.
+        if self.enabled and not self.citizenship and not self.visa_countries:
+            log.error(
+                "work_authorization is set but no country was recognised (%s) — "
+                "every 'authorised to work?' would answer No. Check the spelling, "
+                "and note citizenship takes a list.",
+                ", ".join(self.unresolved[:5]) or "no values")
+
+    @property
+    def usable(self) -> bool:
+        """Configured AND able to answer. False means do not trust it."""
+        return bool(self.citizenship or self.visa_countries)
 
     # ------------------------------------------------------------------
     # Country detection

@@ -185,6 +185,22 @@ class State:
                 notes           TEXT DEFAULT ''
             );
 
+            -- Agent-driven sessions (Claude in Chrome and friends).
+            -- A claim is taken between "the engine said apply" and "the agent
+            -- reported back", so the Selenium bot and a browser agent running
+            -- at the same time cannot both take the same posting — two
+            -- applications to one job is worse than none.
+            CREATE TABLE IF NOT EXISTS agent_claims (
+                job_id          TEXT PRIMARY KEY,
+                job_url         TEXT DEFAULT '',
+                title           TEXT DEFAULT '',
+                company         TEXT DEFAULT '',
+                claimed_at      TEXT DEFAULT (datetime('now','localtime')),
+                status          TEXT DEFAULT 'claimed',
+                driver          TEXT DEFAULT '',
+                notes           TEXT DEFAULT ''
+            );
+
             -- Hiring Velocity (Smart Scheduling)
             CREATE TABLE IF NOT EXISTS hiring_velocity (
                 company         TEXT,

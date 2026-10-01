@@ -70,8 +70,17 @@ search:
 # (zero LLM tokens) and NEVER cached across countries.
 # ═══════════════════════════════════════════════════════════════
 work_authorization:
+  # Countries where you can work by right. A LIST — but a single country
+  # written as a plain string (citizenship: "India") is accepted too, because
+  # the key reads singular and that is the natural thing to write.
+  #
+  # Spelling matters. If none of the names here is recognised, every
+  # "are you authorised to work in X?" would answer No and every "do you
+  # require sponsorship?" would answer Yes — on every application. The bot
+  # refuses to answer at all in that case rather than answering wrongly, and
+  # `lla validate-config` fails, so you find out before applying and not after.
   citizenship:
-    - "India"                    # countries where you can work by right
+    - "India"
   visas: []                      # work authorizations you hold, e.g.:
   #  - country: "United Kingdom"
   #    type: "Skilled Worker"    # optional, informational
@@ -277,6 +286,14 @@ browser:
   # mismatch. Only set a number to force a specific major version.
   chrome_version: null
   auto_update_driver: true       # on a launch mismatch, upgrade the driver package and retry
+  # chrome_binary: leave blank to auto-detect. Set it when Chrome/Chromium is
+  # somewhere the driver will not look: a container, a snap or flatpak install,
+  # a portable build. Without a findable browser the driver fails with
+  # "Binary Location Must be a String", which names neither cause nor fix.
+  #   Linux : /usr/bin/chromium   or  /opt/google/chrome/chrome
+  #   macOS : /Applications/Google Chrome.app/Contents/MacOS/Google Chrome
+  #   Windows: C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe
+  chrome_binary: ""
   window_width: 1280
   window_height: 900
   user_data_dir: ""
@@ -375,6 +392,27 @@ rag:
   reuse_threshold: 0.85         # similarity ≥ this → reuse stored answer directly
   context_threshold: 0.50       # similarity ≥ this → inject as prompt context
   max_context: 3                # max similar Q&As injected per prompt
+
+# ═══════════════════════════════════════════════════════════════
+# CREDENTIAL VAULT — self-registration on ATS portals (Workday, iCIMS, Taleo…)
+# Those platforms make you create an account per company before you can apply.
+# With this on, the bot mints a UNIQUE strong password per tenant, registers,
+# and writes the credentials to data/ats_accounts.xlsx (CSV if openpyxl is
+# missing) plus the ats_credentials table — so you can log in yourself later.
+#
+# SECURITY: that sheet holds working logins in PLAIN TEXT. data/ is gitignored
+# and the file is written owner-only. Use an email you actually check (tenants
+# send verification links), and never reuse an important password here.
+# ═══════════════════════════════════════════════════════════════
+credential_vault:
+  enabled: true
+  auto_register: true          # false = only use credentials you configured
+  email: ""                    # blank -> personal.email
+  password_length: 16
+  use_plus_addressing: false   # true -> you+nvidia@gmail.com per tenant
+                               # (unique logins, one inbox — some ATS reject "+")
+  output_dir: "data"
+  sheet_name: "ats_accounts"   # -> data/ats_accounts.xlsx
 
 # ═══════════════════════════════════════════════════════════════
 # EXTERNAL APPLY — Fill ATS forms on 12 platforms

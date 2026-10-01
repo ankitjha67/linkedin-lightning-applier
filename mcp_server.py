@@ -33,6 +33,17 @@ from tools_layer import (
     tool_visa_sponsors,
     tool_export_csv,
     tool_pipeline_summary,
+    tool_propose_outcomes_from_email,
+    tool_apply_email_outcomes,
+    tool_record_outcome,
+    tool_open_applications,
+    tool_outcome_summary,
+    tool_chrome_session_open,
+    tool_consider_job,
+    tool_answers_for_job,
+    tool_report_application,
+    tool_remember_answers,
+    tool_chrome_session_status,
 )
 
 mcp = FastMCP("linkedin-lightning-applier")
@@ -149,3 +160,130 @@ def pipeline_summary() -> str:
 
 if __name__ == "__main__":
     mcp.run()
+
+
+@mcp.tool()
+def propose_outcomes_from_email(emails_json: str) -> str:
+    """Read recruiter emails and propose application outcomes WITHOUT recording
+    anything. Pass a JSON list of messages: [{id, from, subject, body, date}].
+    Returns each proposed outcome with the application it matched, a confidence
+    level, and why it matched. Use this when the user asks you to check their
+    inbox for job-application news. Always show the proposals to the user and
+    get their approval before calling apply_email_outcomes."""
+    return tool_propose_outcomes_from_email(emails_json)
+
+
+@mcp.tool()
+def apply_email_outcomes(emails_json: str, approved_email_ids: str) -> str:
+    """Record ONLY the email-derived outcomes the user has explicitly approved.
+    Pass the same messages JSON plus a JSON list of the approved email ids.
+    Nothing else is recorded regardless of confidence. Each stored outcome
+    cites the email it came from. Never call this without the user's approval
+    of the specific proposals."""
+    return tool_apply_email_outcomes(emails_json, approved_email_ids)
+
+
+@mcp.tool()
+def record_outcome(query: str, outcome: str, notes: str = "",
+                   when: str = "") -> str:
+    """Record what happened to a job application. `query` is a company, job
+    title, job id or URL; `outcome` is one of callback, assessment, interview,
+    offer, rejection, withdrawn, ghosted. `when` accepts '2026-08-14',
+    '3 days ago' or 'yesterday' — use it whenever the user says the event
+    happened earlier, so response times stay accurate. Use this when the user
+    mentions an interview, offer or rejection."""
+    return tool_record_outcome(query, outcome, notes, when)
+
+
+@mcp.tool()
+def open_applications(quiet_days: int = 0) -> str:
+    """List applications with no final outcome yet, longest silence first. Set
+    quiet_days to only show those silent that many days. Use this when the user
+    asks what they are still waiting on or who to chase."""
+    return tool_open_applications(quiet_days)
+
+
+@mcp.tool()
+def outcome_summary() -> str:
+    """The application funnel: applied, engaged, interviews, offers, rejections,
+    ghosted and still-open, with the average days to a first response. Use this
+    when the user asks how their applications are converting."""
+    return tool_outcome_summary()
+
+
+# ── Agent-driven browser sessions (Claude in Chrome) ───────────────────────
+# The agent has the browser; the engine has the judgement. These tools are the
+# handoff, and they enforce the daily cap, one-application-per-job and
+# "never invent an answer" here rather than trusting a prompt to remember.
+
+@mcp.tool()
+def chrome_session_open(search_terms: str = "") -> str:
+    """Start a job-application session driven from the browser. Returns the
+    end-to-end runbook with the user's live state in it: how many applications
+    are left today, what to search for, the pacing rules, and the stop
+    conditions. Call this FIRST when the user asks you to apply to jobs in
+    their browser, and follow what it says. Optionally pass comma-separated
+    search terms to override the configured ones."""
+    return tool_chrome_session_open(search_terms)
+
+
+@mcp.tool()
+def consider_job(url: str, title: str = "", company: str = "",
+                 description: str = "", location: str = "") -> str:
+    """Ask whether to apply to a posting, BEFORE starting its application.
+    Pass the URL plus the title, company, location and full description text
+    you read off the page. Returns a verdict of "apply", "skip" or "stop" with
+    a reason, and claims the job so nothing else applies to it at the same
+    time. This is the authority: it knows what has already been applied to,
+    how the job scores against the CV, how many applications remain today, and
+    whether we are inside the user's active hours. "stop" means end the
+    session, not skip this one."""
+    return tool_consider_job(url, title, company, description, location)
+
+
+@mcp.tool()
+def answers_for_job(questions_json: str, job_id: str = "",
+                    job_location: str = "") -> str:
+    """Ask what to type in a form's fields. Pass a JSON list of what is on the
+    page: [{"label": "...", "type": "text|select|radio", "options": [...]}].
+    Every answer comes back with a source (work_auth, remembered, config) and a
+    note saying where the value came from. Type those values exactly. Anything
+    listed under "unanswered" must go back to the user — never improvise a
+    value, and leave alone any field reported as prose or a consent notice. A
+    plausible-looking wrong answer on a real application is the worst possible
+    outcome."""
+    return tool_answers_for_job(questions_json, job_id, job_location)
+
+
+@mcp.tool()
+def report_application(job_id: str, submitted: bool, title: str = "",
+                       company: str = "", url: str = "",
+                       fields_filled: int = 0, notes: str = "",
+                       failed_reason: str = "") -> str:
+    """Record what happened to one application, after the user has confirmed.
+    Set submitted=true only if the application was actually sent. Returns how
+    long to wait before the next posting and whether to carry on at all —
+    respect both. Always call this, including when an application failed or was
+    abandoned, so the job's claim is released and the engine's count stays
+    honest."""
+    return tool_report_application(job_id, submitted, title, company, url,
+                                   fields_filled, notes, failed_reason)
+
+
+@mcp.tool()
+def remember_answers(pairs_json: str) -> str:
+    """Store answers the user supplied for questions the engine could not
+    answer, so the next form fills them automatically. Pass a JSON list:
+    [{"label": "...", "value": "...", "options": [...]}]. Only store what the
+    user actually told you — never your own guess."""
+    return tool_remember_answers(pairs_json)
+
+
+@mcp.tool()
+def chrome_session_status() -> str:
+    """Where the browser session stands: applications today against the daily
+    cap, whether we are inside active hours, any jobs still claimed from an
+    earlier session that never reported back, and how long to wait before the
+    next action. Use this to check in mid-session, or to find abandoned
+    claims."""
+    return tool_chrome_session_status()

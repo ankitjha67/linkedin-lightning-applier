@@ -73,8 +73,9 @@ The bot runs in a continuous loop. Every cycle:
 - **ATS CV Template Engine** (`cv_template_engine.py`) — ATS-optimized HTML→PDF CV generation with keyword injection from JD.
 - **Pipeline State Machine** (`pipeline_manager.py`) — Formal lifecycle states (discovered → evaluated → applied → interviewing → offer) with enforced transitions.
 
-### Application Craftsmanship (11 — new in v2.9)
+### Application Craftsmanship (12 — new in v2.9)
 - **Browser Extension (24/7 in-browser autopilot)** (`browser_extension/`) — Chrome/Edge MV3 companion that runs in your **real logged-in browser** (no chromedriver): alarm-driven board scanning, LLM relevance scoring with **NVIDIA NIM / frontier / local Ollama-LM Studio** provider placeholders, per-country work-auth answers, learned-answer reuse, resume auto-attach, fill-only or auto-submit.
+- **Autonomous ATS Self-Registration** (`credential_vault.py`) — Workday/iCIMS/Taleo make you create an account per company. The bot mints a **unique strong password per tenant**, registers, and writes the credentials to **`data/ats_accounts.xlsx`** (CSV fallback) plus SQLite — so you can log in yourself. Re-visits sign in instead of registering twice. Candidate details are derived straight from your CV (`cv_profile.py`) when config is blank.
 - **Environment Doctor** (`env_doctor.py` / `lla doctor --fix`) — Auto-detects your Python and **installed Chrome version** (Windows registry / macOS / Linux), installs missing packages one-by-one, and reports optional tools. Browser launch self-heals a Chrome↔driver mismatch (re-pins, then auto-upgrades the driver) so it never dies on a version error.
 - **Country-Aware Work Authorization** (`work_auth.py`) — "Authorized to work?" / "Need sponsorship?" answered from the JOB's country vs your citizenship + visas held. Countries you're not authorized in automatically answer No / sponsorship-required. Deterministic, zero tokens, and never cached across borders.
 - **Batch External Apply** (`apply_urls.py`) — Submit ATS applications from a plain URL list (txt/CSV/JSON) in a real browser, **no LinkedIn required**. URL-dedup against SQLite; `--dry-run` previews ATS detection.
@@ -85,6 +86,15 @@ The bot runs in a continuous loop. Every cycle:
 - **Semantic Answer Memory (RAG)** (`answer_rag.py`) — Remembers every form answer; semantically-similar questions are answered straight from memory with **zero LLM tokens**, and near-matches are injected into the prompt for consistency. Pure-Python TF-IDF — works offline with any provider.
 - **Any-Job-Board Generic Apply** — URLs matching no known ATS fall back to a best-effort generic handler that sweeps the form and can **register/sign in** with shared credentials (`ats_accounts.generic`). Disable with `external_apply.allow_generic_fallback: false`.
 - **GitHub Signal Enrichment** (`github_enrich.py`) — Classifies your repos like a screener (open-source vs self-project vs fork) and ranks which projects to feature per posting.
+
+### Closing the Loop (new in v2.10)
+- **Outcome Recording** (`outcomes.py` / `lla outcome`) — Eight modules learn from `response_tracking`: the ghost predictor, SLA tracker, forensics, smart scheduler, apply timing, follow-up engine, success tracker and resume A/B testing. Nothing was writing it except the email monitor, so a recruiter who *phones* you taught them nothing. Record an outcome against the application it belongs to, dated when it actually happened; list what is still open by longest silence; sweep long-quiet applications to ghosted.
+- **Inbox → Outcomes** (`gmail_sync.py` / `lla sync-email`) — Reads recruiter email and **proposes** outcomes; recording is a separate, explicit step, and every stored outcome cites the sender, subject and date it came from. Matching is conservative on purpose — a misattributed outcome is worse than a missing one. Works from IMAP, or from any MCP client that already has Gmail access, so this project holds no Gmail token of its own.
+- **Profile Expansion** (`profile_expand.py` / `lla expand`) — Enriches your profile from GitHub, a portfolio, Scholar and Kaggle. Every finding cites its source URL, `--apply` only fills fields you left blank, and config additions are spliced in as text so the template's 428 explanatory comments survive.
+- **Rendered-Layout Verification** (`tools/verify_pdf.py`) — `lla docs` checks a CV's text; this checks the page. Catches a job title stranded at the foot of a page with its bullets overleaf, a third page carrying two lines, and text outside the margins that ATS parsers drop. `--fix` inserts `\needspace` into the `.tex`. Runs automatically after `lla docs` compiles.
+- **robots.txt Compliance** (`tools/robots_check.py` / `lla robots`) — RFC 9309, hand-parsed because the stdlib drops rules after a blank line and fails *open*. Longest-match wins, ties go to Disallow, and anything unconfirmed is a no. It reports; it never overrides a site that has said no.
+- **Supply-Chain Guards** (`tools/security_guards.py`, `tools/lint_skills.py`) — CI-enforced checks that `.gitignore` still protects every credential path, that nothing secret is tracked, that no pre-approved permissions or hooks have appeared, and that the shipped Claude skills and slash commands still point at files that exist.
+- **Scoped Reset + Template Checking** (`lla reset`, `lla add-template`) — Clear one scope of the 48-table database (previewed, backed up, `--yes` required) instead of deleting `state.db`. Check a custom CV template before installing it, because a mistyped `{{EXPERINCE}}` renders happily and silently drops every job from your CV.
 
 ### Core Foundations
 - **AI Form Filling** — 13 LLM providers: OpenAI, Anthropic Claude, Google Gemini, DeepSeek, Groq, Together, OpenRouter (free model chain), xAI Grok, Mistral, Claude CLI (no API key), Ollama (local), LM Studio (local), and `custom` — any OpenAI-compatible endpoint (vLLM, llama.cpp server, LocalAI). Answers cached in SQLite.
@@ -471,9 +481,107 @@ or an unparseable evaluation is never blocked.
 
 A targeted, company-first discovery mode that complements LinkedIn/Google search. Scans a curated `companies.json` (30+ companies, extensible) via **free** ATS JSON APIs (Greenhouse, Lever, Ashby) with HTML-scraping fallback — no paid API needed. Enable with `careers_scanner.enabled: true`. Scores every role with your match scorer and surfaces the top matches.
 
+## Apply With Claude in Chrome (engine-driven)
+
+Claude in Chrome acts in your real browser with your real sessions, but it
+cannot import this project — no match scoring, no work-authorisation logic, no
+memory of how you answered a question last time, no dedup, no idea how many
+applications you have sent today. The Selenium bot has all of that and none of
+your logged-in browser. `chrome_bridge.py` is the handoff: **the agent is the
+hands, the engine stays the brain.**
+
+```bash
+lla chrome-session                   # runbook + live state, to paste into Chrome
+lla chrome-session --status          # today vs cap, open claims, next wait
+lla chrome-session --release-claims  # free jobs an abandoned session still holds
+```
+
+With `mcp_server.py` connected, the agent gets six tools and runs this loop per
+posting: `consider_job` (apply / skip / stop) → `answers_for_job` (what to type,
+and where each value came from) → fill → **you** confirm → `report_application`
+(records it, returns how long to wait). `remember_answers` stores anything you
+had to supply, so the next form fills itself.
+
+Three rules live in the engine, not in the prompt — a prompt can be forgotten,
+truncated, or summarised away mid-session:
+
+| Enforced | How |
+|---|---|
+| Daily cap | counted from `daily_stats`; `consider_job` returns `stop` at the limit |
+| One application per job | a claim held between "apply" and "reported", so the bot and the agent cannot both take a posting |
+| No invented answers | every value carries a source; anything unsourceable returns `unanswered` for you |
+
+The agent never clicks the final submit. See `tests/e2e/CLAUDE_IN_CHROME.md`.
+
+## Signing In Without a Password in Your Config
+
+`browser.user_data_dir` points the bot at a Chrome profile you have already
+signed into, so no LinkedIn password ever goes in `config.yaml`. Use a
+**dedicated** profile, not your everyday one: Chrome locks a profile to one
+instance, so sharing it means whichever starts second fails — and that would be
+the bot, silently, at 3am.
+
+```bash
+lla profile --create     # make chrome-lla-profile/ (already gitignored)
+lla profile --login      # opens Chrome on it; sign in to LinkedIn once
+lla profile --check      # confirms the session, and when it expires
+```
+
+`--check` verifies the profile really holds a LinkedIn session, by reading
+cookie **names** out of Chrome's database — opened read-only and immutable, so
+it is safe while Chrome has the file. Cookie values are encrypted and are never
+touched: `li_at`'s presence and expiry is all that is needed.
+
+`lla autopilot preflight` runs the same check, so a profile with no session — or
+an expired one — stops the bot before it starts rather than after it has spent
+three minutes asking for a manual login into a window nobody can see.
+
+## Run It 24/7 (autopilot)
+
+The bot's own loop is already continuous — it scans every `scan_interval_minutes`,
+and `active_hours_start: 0` / `active_hours_end: 24` means round the clock. What
+a long run needs is not a scheduler but a **supervisor**: something to start it
+after a reboot, restart it when Chrome takes the process down with it, and make
+sure a second copy never starts.
+
+```bash
+# Linux / macOS — installs @reboot + a liveness check every 5 minutes
+./tools/setup_autopilot.sh            # or: ./tools/setup_autopilot.sh 10
+lla autopilot status                  # up? for how long? applies today?
+./tools/setup_autopilot.sh --remove
+```
+
+```powershell
+# Windows — the same two triggers, via Task Scheduler
+powershell -ExecutionPolicy Bypass -File tools\setup_autopilot.ps1
+python tools\autopilot.py status
+powershell -ExecutionPolicy Bypass -File tools\setup_autopilot.ps1 -Remove
+```
+
+On a Linux server `tools/lla-autopilot.service` is a better fit than cron: systemd
+supervises the process directly, so a crash is noticed immediately rather than at
+the next tick.
+
+**Never two bots.** `autopilot start` and `autopilot watch` take a lock, so a cron
+tick that fires while the bot is still running does nothing. Two Chrome sessions
+signed into one LinkedIn account apply to the same jobs twice and look exactly
+like automation — and a naive cron entry causes that by default.
+
+**Restarting is safe** because the daily cap lives in SQLite, not in memory:
+`daily_stats` is read fresh every cycle, so a bot that restarts forty times still
+stops at `max_applies_per_day`. If it keeps dying within two minutes of starting,
+autopilot backs off for 30 minutes instead of hammering LinkedIn from a crash
+loop — a restart will not fix a bad config, a Chrome/driver mismatch, or a login
+LinkedIn is refusing.
+
+Running continuously raises your profile with LinkedIn's automation detection.
+`max_applies_per_day` (default 40) and the human-pacing delays are what keep that
+in check — autopilot deliberately does not override them. See `TERMS_OF_USE.md`.
+
 ## Daily Automation
 
-Run one scan cycle per day on a schedule (instead of the continuous loop):
+Prefer this if you want one scan a day rather than continuous operation (the two
+are mutually exclusive — `setup_autopilot.sh` refuses to install alongside it):
 
 ```bash
 # 1. Put your API key in .env (gitignored)
@@ -551,12 +659,21 @@ Extension points: ATS handlers, job platforms, resume templates, role archetypes
 ## Testing
 
 ```bash
-# Run all 396 tests
-python -m unittest discover -s tests -v
+# Run all 727 tests
+python tests/run_tests.py
 
 # Run specific test module
-python -m unittest tests.test_state -v
-python -m unittest tests.test_salary_intel -v
+python -m unittest tests.test_outcomes -v
+python -m unittest tests.test_robots_check -v
+```
+
+Everything CI enforces, before you push:
+
+```bash
+python tests/run_tests.py            # the whole suite
+python tools/security_guards.py      # no secrets escaping into git
+python tools/lint_skills.py          # .claude/ skills and commands still valid
+python -m ruff check $(cat .ruff-paths | tr '\n' ' ')
 ```
 
 Tests cover: State class (49 tables, CRUD, migration, CSV export), match scoring (JSON parsing, bounds, thresholds), salary parsing (10+ currencies), dedup engine (fingerprinting, cross-platform matching), apply timing (freshness scoring, queue reordering), JD change tracking (snapshot capture, change detection), and config validation (missing sections, conflicts, numeric bounds).
@@ -581,6 +698,10 @@ node extension-e2e.js --headed --profile ~/lla-profile   # keeps logins between 
 Exit code is `0` only when no bugs are found, so it can gate CI. This harness
 caught four real bugs, including a Greenhouse consent question being
 auto-answered with the notice period.
+
+For logged-in flows the harness can't reach (LinkedIn Easy Apply, a Workday
+tenant, an actual Submit), `tests/e2e/CLAUDE_IN_CHROME.md` has a paste-ready
+prompt for driving the same checklist with Claude for Chrome in your own browser.
 
 ## Production Hardening
 

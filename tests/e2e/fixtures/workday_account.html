@@ -1,0 +1,41 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><title>Create Account - Workday</title></head>
+<body>
+<header><a href="#" data-automation-id="signInLink">Sign In</a></header>
+<h1>Create Account</h1>
+<div id="form">
+  <label>Email Address</label>
+  <input type="text" data-automation-id="email" id="email">
+  <label>Password</label>
+  <input type="password" data-automation-id="password" id="pw">
+  <label>Verify New Password</label>
+  <input type="password" data-automation-id="verifyPassword" id="vpw">
+  <div role="alert" id="hint">Password must contain at least 1 number and 1 special character.</div>
+  <label><input type="checkbox" data-automation-id="createAccountCheckbox" id="agree"> I agree to the Terms</label>
+  <button data-automation-id="createAccountSubmitButton" id="submit">Create Account</button>
+  <div role="alert" id="err" style="display:none"></div>
+</div>
+<script>
+// Mimic Workday: reject weak passwords, reject duplicate emails, else succeed.
+const REGISTERED = new Set();
+document.getElementById('submit').addEventListener('click', () => {
+  const email = document.getElementById('email').value;
+  const pw = document.getElementById('pw').value;
+  const vpw = document.getElementById('vpw').value;
+  const agreed = document.getElementById('agree').checked;
+  const err = document.getElementById('err');
+  const strong = pw.length >= 8 && /[a-z]/.test(pw) && /[A-Z]/.test(pw)
+              && /[0-9]/.test(pw) && /[^A-Za-z0-9]/.test(pw);
+  const show = (m) => { err.style.display='block'; err.textContent = m;
+                        err.setAttribute('data-automation-id','errorMessage'); };
+  if (!email || !pw) return show('This field is required');
+  if (pw !== vpw)    return show('Passwords do not match');
+  if (!strong)       return show('Password does not meet requirements');
+  if (!agreed)       return show('You must agree to the Terms');
+  if (REGISTERED.has(email)) return show('An account with this email already exists');
+  REGISTERED.add(email);
+  // SUCCESS: form is replaced, but "Sign In" REMAINS in the header.
+  document.getElementById('form').innerHTML =
+    '<h2>Your account has been created.</h2><p>Continue to your application.</p>';
+  window.__registered = { email: email, password: pw };
+});
+</script></body></html>

@@ -438,8 +438,300 @@ def _fmt_row(row):
     return str(row)
 
 
+def tool_propose_outcomes_from_email(emails_json: str) -> str:
+    """Read recruiter emails and propose outcomes. Writes NOTHING.
+
+    `emails_json` is a JSON list of {id, from, subject, body, date}. This is
+    the read half of the approval gate: an MCP client that already has Gmail
+    access passes messages in, gets proposals back, shows them to the person,
+    and only then calls tool_apply_email_outcomes with the ids they approved.
+    """
+    import json
+    state = None
+    try:
+        emails = json.loads(emails_json) if isinstance(emails_json, str) else emails_json
+        if not isinstance(emails, list):
+            return "Expected a JSON list of messages: [{id, from, subject, body, date}]"
+        _cfg, state, _ai = _load()
+        from gmail_sync import propose_outcomes, summarise
+        proposals = propose_outcomes(state, emails)
+        return json.dumps({"summary": summarise(proposals),
+                           "proposals": [p.as_dict() for p in proposals]}, indent=2)
+    except Exception as exc:
+        return f"Could not read those messages: {exc}"
+    finally:
+        if state:
+            try:
+                state.close()
+            except Exception:
+                pass
+
+
+def tool_apply_email_outcomes(emails_json: str, approved_email_ids: str) -> str:
+    """Record ONLY the proposals whose email ids are explicitly approved.
+
+    `approved_email_ids` is a JSON list (or comma-separated string) of ids from
+    tool_propose_outcomes_from_email. Nothing else is written, whatever its
+    confidence — the person approving is the gate. Each recorded outcome cites
+    the email it came from.
+    """
+    import json
+    state = None
+    try:
+        emails = json.loads(emails_json) if isinstance(emails_json, str) else emails_json
+        try:
+            approved = json.loads(approved_email_ids)
+        except Exception:
+            approved = [s.strip() for s in str(approved_email_ids).split(",") if s.strip()]
+        if not approved:
+            return "No email ids approved — nothing was recorded."
+        _cfg, state, _ai = _load()
+        from gmail_sync import apply_proposals, propose_outcomes
+        proposals = propose_outcomes(state, emails)
+        written = apply_proposals(state, proposals, approve=set(approved))
+        if not written:
+            skipped = [p.as_dict() for p in proposals
+                       if p.email_id in set(approved) and p.error]
+            return json.dumps({"recorded": 0, "skipped": skipped}, indent=2)
+        return json.dumps({"recorded": len(written),
+                           "outcomes": [p.as_dict() for p in written]}, indent=2)
+    except Exception as exc:
+        return f"Could not record those outcomes: {exc}"
+    finally:
+        if state:
+            try:
+                state.close()
+            except Exception:
+                pass
+
+
+def tool_record_outcome(query: str, outcome: str, notes: str = "",
+                        when: str = "") -> str:
+    """Record what happened to an application (interview, offer, rejection…).
+
+    `query` is a company, job title, job id or URL. Refuses rather than guesses
+    when it matches several applications.
+    """
+    state = None
+    try:
+        _cfg, state, _ai = _load()
+        from outcomes import (
+            ALL_TYPES,
+            find_applications,
+            normalise_type,
+            parse_when,
+            record_outcome,
+        )
+        key = normalise_type(outcome)
+        if not key:
+            return f"'{outcome}' is not an outcome. Use one of: {', '.join(ALL_TYPES)}"
+        matches = find_applications(state, query)
+        if not matches:
+            return f"No application matches '{query}'."
+        if len(matches) > 1:
+            listed = "\n".join(f"  {m['company']} — {m['title']} (id {m['job_id']})"
+                               for m in matches[:10])
+            return (f"'{query}' matches {len(matches)} applications; say which:\n"
+                    f"{listed}")
+        when_dt = parse_when(when) if when else None
+        if when and when_dt is None:
+            return f"Could not read the date '{when}'."
+        _ok, msg = record_outcome(state, matches[0]["job_id"], key,
+                                  notes=notes, when=when_dt)
+        return msg
+    except Exception as exc:
+        return f"Could not record that outcome: {exc}"
+    finally:
+        if state:
+            try:
+                state.close()
+            except Exception:
+                pass
+
+
+def tool_open_applications(quiet_days: int = 0) -> str:
+    """Applications with no final outcome yet, longest silence first."""
+    state = None
+    try:
+        _cfg, state, _ai = _load()
+        from outcomes import format_pending, pending_applications
+        return format_pending(pending_applications(state, quiet_days))
+    except Exception as exc:
+        return f"Could not list open applications: {exc}"
+    finally:
+        if state:
+            try:
+                state.close()
+            except Exception:
+                pass
+
+
+def tool_outcome_summary() -> str:
+    """The application funnel: applied, engaged, interviews, offers, ghosted."""
+    state = None
+    try:
+        _cfg, state, _ai = _load()
+        from outcomes import format_summary, outcome_summary
+        return format_summary(outcome_summary(state))
+    except Exception as exc:
+        return f"Could not build the funnel: {exc}"
+    finally:
+        if state:
+            try:
+                state.close()
+            except Exception:
+                pass
+
+
+def _bridge():
+    """(cfg, state, ai) for a browser-agent session."""
+    return _load()
+
+
+def tool_chrome_session_open(search_terms: str = "") -> str:
+    """Open an agent-driven application session: the runbook plus live state."""
+    state = None
+    try:
+        cfg, state, _ai = _bridge()
+        from chrome_bridge import render_runbook, session_open
+        terms = [t.strip() for t in (search_terms or "").split(",") if t.strip()]
+        return render_runbook(session_open(state, cfg, terms or None))
+    except Exception as exc:
+        return f"Could not open a session: {exc}"
+    finally:
+        if state:
+            try:
+                state.close()
+            except Exception:
+                pass
+
+
+def tool_consider_job(url: str, title: str = "", company: str = "",
+                      description: str = "", location: str = "") -> str:
+    """Should this posting be applied to? Claims it when the answer is yes."""
+    import json
+    state = None
+    try:
+        cfg, state, ai = _bridge()
+        from chrome_bridge import consider
+        verdict = consider(state, cfg, url, title, company, description,
+                           location, ai=ai if getattr(ai, "enabled", False) else None)
+        return json.dumps(verdict, indent=2, default=str)
+    except Exception as exc:
+        return f"Could not assess that job: {exc}"
+    finally:
+        if state:
+            try:
+                state.close()
+            except Exception:
+                pass
+
+
+def tool_answers_for_job(questions_json: str, job_id: str = "",
+                         job_location: str = "") -> str:
+    """What to type in each field, with the provenance of every value."""
+    import json
+    state = None
+    try:
+        questions = json.loads(questions_json) if isinstance(questions_json, str) \
+            else questions_json
+        if isinstance(questions, dict):
+            questions = [questions]
+        if not isinstance(questions, list):
+            return ('Expected a JSON list of fields: '
+                    '[{"label": "...", "type": "...", "options": [...]}]')
+        cfg, state, _ai = _bridge()
+        from chrome_bridge import answers
+        return json.dumps(answers(state, cfg, questions, job_location, job_id),
+                          indent=2, default=str)
+    except Exception as exc:
+        return f"Could not answer those fields: {exc}"
+    finally:
+        if state:
+            try:
+                state.close()
+            except Exception:
+                pass
+
+
+def tool_report_application(job_id: str, submitted: bool, title: str = "",
+                            company: str = "", url: str = "",
+                            fields_filled: int = 0, notes: str = "",
+                            failed_reason: str = "") -> str:
+    """Record what happened to one application, and get the next step."""
+    import json
+    state = None
+    try:
+        cfg, state, _ai = _bridge()
+        from chrome_bridge import report
+        return json.dumps(
+            report(state, cfg, job_id, bool(submitted), title=title,
+                   company=company, url=url, fields_filled=int(fields_filled or 0),
+                   notes=notes, failed_reason=failed_reason),
+            indent=2, default=str)
+    except Exception as exc:
+        return f"Could not record that application: {exc}"
+    finally:
+        if state:
+            try:
+                state.close()
+            except Exception:
+                pass
+
+
+def tool_remember_answers(pairs_json: str) -> str:
+    """Store answers the user supplied, so the next form reuses them."""
+    import json
+    state = None
+    try:
+        pairs = json.loads(pairs_json) if isinstance(pairs_json, str) else pairs_json
+        if isinstance(pairs, dict):
+            pairs = [pairs]
+        cfg, state, _ai = _bridge()
+        from chrome_bridge import remember
+        saved = remember(state, cfg, pairs)
+        return f"Remembered {saved} answer(s) for next time."
+    except Exception as exc:
+        return f"Could not remember those answers: {exc}"
+    finally:
+        if state:
+            try:
+                state.close()
+            except Exception:
+                pass
+
+
+def tool_chrome_session_status() -> str:
+    """Where the session stands: applications today, cap, open claims, pacing."""
+    import json
+    state = None
+    try:
+        cfg, state, _ai = _bridge()
+        from chrome_bridge import session_status
+        return json.dumps(session_status(state, cfg), indent=2, default=str)
+    except Exception as exc:
+        return f"Could not read the session: {exc}"
+    finally:
+        if state:
+            try:
+                state.close()
+            except Exception:
+                pass
+
+
 # Registry of all tools, useful for adapters that want to enumerate them.
 ALL_TOOLS = {
+    "tool_chrome_session_open": tool_chrome_session_open,
+    "tool_consider_job": tool_consider_job,
+    "tool_answers_for_job": tool_answers_for_job,
+    "tool_report_application": tool_report_application,
+    "tool_remember_answers": tool_remember_answers,
+    "tool_chrome_session_status": tool_chrome_session_status,
+    "tool_propose_outcomes_from_email": tool_propose_outcomes_from_email,
+    "tool_apply_email_outcomes": tool_apply_email_outcomes,
+    "tool_record_outcome": tool_record_outcome,
+    "tool_open_applications": tool_open_applications,
+    "tool_outcome_summary": tool_outcome_summary,
     "tool_stats": tool_stats,
     "tool_score_job": tool_score_job,
     "tool_evaluate_job": tool_evaluate_job,

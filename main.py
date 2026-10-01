@@ -340,7 +340,15 @@ signal.signal(signal.SIGTERM, _signal)
 
 def load_config(path: str) -> dict:
     with open(path, "r", encoding="utf-8") as f:
-        return yaml.safe_load(f)
+        cfg = yaml.safe_load(f)
+    # Backfill any blank candidate details straight from the CV, so an
+    # application can be completed autonomously from the CV alone.
+    try:
+        from cv_profile import enrich_config_profile
+        cfg = enrich_config_profile(cfg)
+    except Exception as exc:
+        logging.getLogger("lla").debug("CV profile enrichment skipped: %s", exc)
+    return cfg
 
 
 def setup_logging(cfg: dict):

@@ -39,7 +39,10 @@ fi
 CRON_LINE="$MINUTE $HOUR * * * cd $PROJECT_DIR && $RUNNER $MARKER"
 
 # --- Install / replace the entry -------------------------------------------
-( crontab -l 2>/dev/null | grep -v "$MARKER" ; echo "$CRON_LINE" ) | crontab -
+# The `|| true` is load-bearing: `grep -v` exits 1 when it selects no lines,
+# which is exactly the first-run case (an empty crontab), and under
+# `set -euo pipefail` that aborted this script before it installed anything.
+{ crontab -l 2>/dev/null | grep -v "$MARKER" || true ; echo "$CRON_LINE" ; } | crontab -
 
 printf 'Installed daily cron job:\n  %s\n\n' "$CRON_LINE"
 printf 'It will run every day at %02d:%02d (server local time).\n' "$HOUR" "$MINUTE"

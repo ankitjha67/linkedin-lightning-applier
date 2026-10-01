@@ -64,6 +64,11 @@ def _load_config(path: str = "config.yaml") -> dict:
         sys.exit(1)
     with open(cfg_path, "r", encoding="utf-8") as fh:
         cfg = yaml.safe_load(fh) or {}
+    try:
+        from cv_profile import enrich_config_profile
+        cfg = enrich_config_profile(cfg)
+    except Exception as exc:
+        log.debug("CV profile enrichment skipped: %s", exc)
     return cfg
 
 
@@ -214,6 +219,30 @@ def cmd_docs(args):
     print(f"  CV         : {res['cv_tex']}" + (f"  →  {res['cv_pdf']}" if res.get('cv_pdf') else ""))
     print(f"  Cover      : {res['cover_tex']}" + (f"  →  {res['cover_pdf']}" if res.get('cover_pdf') else ""))
     print()
+
+    # The ATS check below reads the text. This reads the page — a job title
+    # stranded at the foot of a page with its bullets overleaf passes every
+    # text check there is, and is the first thing a human reader notices.
+    if res.get("cv_pdf"):
+        try:
+            from tools.verify_pdf import verify
+            layout, pages, _err = verify(res["cv_pdf"],
+                                         expected_pages=args.max_pages)
+            errors = [i for i in layout if i.severity == "error"]
+            state = "OK" if not errors else "REVIEW"
+            print(f"  Layout     : {_color(state, 'green' if not errors else 'yellow')}"
+                  f"  ({len(pages)} page(s))")
+            for issue in layout:
+                mark = "✗" if issue.severity == "error" else "⚠"
+                print(f"    {mark} {issue.message}")
+                if issue.fix:
+                    print(f"      → {issue.fix}")
+            if errors and res.get("cv_tex"):
+                print(f"      → python tools/verify_pdf.py {res['cv_pdf']} "
+                      f"--tex {res['cv_tex']} --fix   (guards entries, then rebuild)")
+            print()
+        except Exception as exc:
+            log.debug("layout check skipped: %s", exc)
     color = "green" if report["passed"] else "yellow"
     print(f"  ATS check  : {_color(('PASS' if report['passed'] else 'REVIEW'), color)}  "
           f"(keyword coverage {report['coverage_pct']}%, min {report['min_coverage']}%)")
@@ -855,6 +884,551 @@ def cmd_export(args):
     print(f"  Data exported to {os.path.abspath(export_dir)}/")
 
 
+def cmd_profile(args):
+    """Create, verify, or sign into the Chrome profile the bot uses."""
+    from browser_profile import (
+        create,
+        default_profile_dir,
+        format_state,
+        launch_for_login,
+        login_command,
+        profile_state,
+        usable,
+        wait_for_login,
+    )
+
+    path = args.path
+    if not path:
+        try:
+            cfg = _load_config(args.config)
+            path = ((cfg.get("browser", {}) or {}).get("user_data_dir") or "").strip()
+        except SystemExit:
+            path = ""
+    path = path or str(default_profile_dir(Path.cwd()))
+
+    if args.create:
+        _print_banner("Chrome profile")
+        ok, msg = create(path)
+        print(f"  {msg}")
+        if ok:
+            print("\n  Add this to config.yaml:")
+            print(f"    browser:\n      user_data_dir: \"{path}\"")
+            print("\n  Then sign in once:  lla profile --login")
+        return 0 if ok else 1
+
+    if args.login:
+        _print_banner("Sign in to LinkedIn, once")
+        create(path)
+        proc, command = launch_for_login(path, args.chrome or "")
+        if proc is None:
+            print("  Could not start a browser here. Run this yourself:\n")
+            print("    " + " ".join(command))
+            print("\n  Sign in to LinkedIn, then close the window and run:")
+            print("    lla profile --check")
+            return 1
+        print("  A Chrome window is opening on the bot's own profile.")
+        print("  Sign in to LinkedIn there, then leave it — I am watching for")
+        print(f"  the session. Waiting up to {args.timeout // 60} minutes.\n")
+        session = wait_for_login(path, timeout_sec=args.timeout)
+        if session.get("present"):
+            days = session.get("days_left")
+            print("  Signed in." + (f" The session lasts about {days:.0f} day(s)."
+                                     if days else ""))
+            print("  You can close that window; the bot reuses the profile.")
+            print(f"\n  Confirm any time with:  lla profile --check")
+            return 0
+        print("  No LinkedIn session appeared in that time.")
+        print("  Sign in in that window, then run:  lla profile --check")
+        return 1
+
+    _print_banner("Chrome profile")
+    state = profile_state(path)
+    print(format_state(state))
+    if usable(state):
+        print("\n  Ready. The bot can sign in with this profile:")
+        print("    lla autopilot preflight && lla autopilot start")
+        return 0
+    return 1
+
+
+def cmd_chrome_session(args):
+    """The end-to-end runbook for a browser agent, with live state in it."""
+    import json as _json
+
+    from chrome_bridge import (
+        open_claims,
+        render_runbook,
+        session_open,
+        session_status,
+    )
+
+    cfg = _load_config(args.config)
+    state = _init_state(cfg)
+
+    if args.status:
+        _print_banner("Browser session")
+        status = session_status(state, cfg)
+        if args.json:
+            print(_json.dumps(status, indent=2, default=str))
+            return 0
+        print(f"  Today        {status['applied_today']} of {status['cap']} "
+              f"applications ({status['remaining']} left)")
+        print(f"  Active hours {'yes' if status['within_active_hours'] else 'NO — stop'}")
+        print(f"  Next         {status['next_action']}"
+              + (f" after {status['wait_seconds']}s" if status['wait_seconds'] else "")
+              + (f"  ({status['why']})" if status['why'] else ""))
+        claims = status["open_claims"]
+        if claims:
+            print(f"\n  {len(claims)} job(s) claimed but never reported back:")
+            for c in claims:
+                print(f"    {c['claimed_at']}  {(c['company'] or '?')[:24]:<24} "
+                      f"{(c['title'] or '?')[:30]}")
+            print("\n  These were started and abandoned. Report them with")
+            print("  report_application, or they expire on their own.")
+        return 0
+
+    if args.release_claims:
+        claims = open_claims(state)
+        if not claims:
+            print("  No open claims.")
+            return 0
+        from chrome_bridge import close_claim
+        for c in claims:
+            close_claim(state, c["job_id"], "abandoned", "released by hand")
+        print(f"  Released {len(claims)} claim(s).")
+        return 0
+
+    terms = [t.strip() for t in (args.terms or "").split(",") if t.strip()]
+    opened = session_open(state, cfg, terms or None)
+    if args.json:
+        print(_json.dumps(opened, indent=2, default=str))
+        return 0
+    print(render_runbook(opened))
+    return 0
+
+
+def cmd_pacing(args):
+    """Print the humanised-behaviour protocol for a browser-driving agent."""
+    import re as _re
+
+    from human_pacing import active_hours_warning, render_protocol
+
+    protocol = render_protocol(args.profile)
+
+    if args.write:
+        doc = Path("tests/e2e/CLAUDE_IN_CHROME.md")
+        if not doc.exists():
+            print(f"  {doc} does not exist.")
+            return 1
+        text = doc.read_text(encoding="utf-8")
+        pattern = _re.compile(
+            r"(<!-- BEGIN GENERATED PACING[^>]*-->\n).*?(\n<!-- END GENERATED PACING -->)",
+            _re.S)
+        if not pattern.search(text):
+            print(f"  {doc} has no generated-pacing markers.")
+            return 1
+        doc.write_text(
+            pattern.sub(lambda m: m.group(1) + protocol + m.group(2), text),
+            encoding="utf-8")
+        print(f"  Updated the pacing block in {doc}")
+        return 0
+
+    if not args.quiet:
+        _print_banner(f"Humanised pacing — {args.profile}")
+    print(protocol)
+
+    # Per-click pacing cannot fix a schedule that no person keeps.
+    try:
+        warning = active_hours_warning(_load_config(args.config))
+    except SystemExit:
+        warning = ""
+    if warning and not args.quiet:
+        print(f"\n  ⚠ {warning}")
+    return 0
+
+
+def cmd_autopilot(args):
+    """Keep the bot running around the clock, and never run two of it."""
+    from tools.autopilot import format_status, start, status, stop, watch
+
+    action = (args.action or "status").lower()
+
+    if action == "preflight":
+        from tools.autopilot import preflight
+        _print_banner("Autopilot preflight")
+        problems = preflight(args.config)
+        if not problems:
+            print("  Ready. Start it with:  lla autopilot start")
+            return 0
+        blocking = [(p, f) for p, f in problems if not p.startswith("ADVISORY:")]
+        advisory = [(p, f) for p, f in problems if p.startswith("ADVISORY:")]
+        for problem, fix in blocking:
+            print(f"  ✗ {problem}")
+            print(f"      fix: {fix}")
+        for problem, fix in advisory:
+            print(f"  ⚠ {problem[len('ADVISORY: '):]}")
+            print(f"      {fix}")
+        if blocking:
+            print(f"\n  {len(blocking)} problem(s) a restart would not fix.")
+            return 1
+        print("\n  Nothing blocking. Start it with:  lla autopilot start")
+        return 0
+
+    if action == "status":
+        _print_banner("Autopilot")
+        print(format_status(status(args.config)))
+        return 0
+    if action == "start":
+        from tools.autopilot import preflight
+        for problem, _fix in preflight(args.config):
+            if problem.startswith("ADVISORY:"):
+                print(f"  ⚠ {problem[len('ADVISORY: '):]}")
+        ok, msg = start(args.config)
+        print(f"  {msg}")
+        return 0 if ok else 1
+    if action == "stop":
+        ok, msg = stop()
+        print(f"  {msg}")
+        return 0 if ok else 1
+    if action == "restart":
+        stop()
+        ok, msg = start(args.config, reason="restart")
+        print(f"  {msg}")
+        return 0 if ok else 1
+    if action == "watch":
+        outcome, msg = watch(args.config)
+        if outcome != "running":
+            print(f"  autopilot {outcome}: {msg}")
+        return 0 if outcome in ("running", "started") else 1
+    print(f"  Unknown action {action!r}. Use: status, start, stop, restart, watch")
+    return 2
+
+
+def cmd_reset(args):
+    """Clear part of the local database, with a backup and a confirmation."""
+    _print_banner("Reset")
+    from state_reset import SCOPE_ORDER, format_plan, format_scopes, reset
+
+    if args.list or not args.what:
+        print(format_scopes())
+        print("\n  lla reset --what cache          # preview")
+        print("  lla reset --what cache --yes    # do it")
+        return 0 if args.list else 2
+
+    if args.what not in SCOPE_ORDER + ["all"]:
+        print(f"  '{args.what}' is not a scope.")
+        print(format_scopes())
+        return 1
+
+    cfg = _load_config(args.config)
+    state = _init_state(cfg)
+    db_path = cfg.get("state", {}).get("db_path", "data/state.db")
+
+    result = reset(state, args.what, db_path=db_path, dry_run=not args.yes)
+    print(format_plan(result))
+    return 0
+
+
+def cmd_add_template(args):
+    """Check a CV template, then install it."""
+    _print_banner("CV Template")
+    from cv_templates import (
+        DEFAULT_TEMPLATE_PATH,
+        check_renders,
+        check_template,
+        default_template,
+        format_report,
+        install,
+        installed_templates,
+    )
+
+    if args.show_default:
+        print(default_template())
+        return 0
+
+    if args.list or not args.template:
+        found = installed_templates(args.dir)
+        if found:
+            print(f"  Templates in {args.dir}/:")
+            for p in found:
+                print(f"    {p}")
+        else:
+            print(f"  No templates in {args.dir}/ — the built-in one is in use.")
+        print("\n  Start from the built-in template:")
+        print("    lla add-template --show-default > mine.html")
+        print("  then check and install it:")
+        print("    lla add-template mine.html")
+        return 0 if args.list else 2
+
+    path = Path(args.template)
+    if not path.exists():
+        print(f"  {args.template} does not exist.")
+        return 1
+    html = path.read_text(encoding="utf-8", errors="replace")
+
+    report = check_template(html)
+    renders_ok, render_msg = check_renders(html)
+    if not renders_ok:
+        report.error(render_msg, "every placeholder must be substitutable")
+    print(f"  {args.template}")
+    print(format_report(report, render_msg if renders_ok else ""))
+
+    if not report.ok:
+        print("\n  Nothing was installed — a template with a mistyped")
+        print("  placeholder renders fine and silently drops that section.")
+        return 1
+    if args.check_only:
+        print(f"\n  Checked only. Install it with:  lla add-template {args.template}")
+        return 0
+
+    ok, msg = install(args.template, args.dest or DEFAULT_TEMPLATE_PATH)
+    print(f"\n  {msg}")
+    if ok:
+        print("  Set cv_template.template_path in config.yaml to use it,")
+        print("  and cv_template.enabled: true if it is not already on.")
+    return 0 if ok else 1
+
+
+def cmd_sync_email(args):
+    """Propose outcomes from recruiter email — approval-gated, source-cited."""
+    _print_banner("Inbox → Outcomes")
+    import json as _json
+
+    from gmail_sync import (
+        apply_proposals,
+        fetch_via_imap,
+        format_proposals,
+        propose_outcomes,
+        summarise,
+    )
+
+    cfg = _load_config(args.config)
+    state = _init_state(cfg)
+
+    if args.emails_file:
+        try:
+            with open(args.emails_file, encoding="utf-8") as fh:
+                emails = _json.load(fh)
+        except Exception as exc:
+            print(f"  Could not read {args.emails_file}: {exc}")
+            return 1
+        if not isinstance(emails, list):
+            print("  Expected a JSON list of messages.")
+            return 1
+    else:
+        emails = fetch_via_imap(cfg, state, days=args.days)
+        if not emails:
+            print("  No mailbox configured, or nothing to read.\n")
+            print("  Either enable email_monitor in config.yaml, or hand this")
+            print("  messages from a client that already has Gmail access:")
+            print("      lla sync-email --emails-file messages.json")
+            print("  where each entry is {id, from, subject, body, date}.")
+            return 2
+
+    proposals = propose_outcomes(state, emails)
+    applied = None
+    if args.apply:
+        applied = apply_proposals(
+            state, proposals,
+            min_confidence="low" if args.all else "high")
+
+    if args.json:
+        print(_json.dumps({"summary": summarise(proposals, applied),
+                           "proposals": [p.as_dict() for p in proposals]},
+                          indent=2))
+    else:
+        print(format_proposals(proposals, applied))
+    return 0
+
+
+def cmd_outcome(args):
+    """Record what actually happened to an application."""
+    from outcomes import (
+        ALL_TYPES,
+        BY_KEY,
+        OUTCOME_TYPES,
+        find_applications,
+        format_pending,
+        format_summary,
+        normalise_type,
+        outcome_summary,
+        parse_when,
+        pending_applications,
+        record_outcome,
+        sweep_ghosted,
+    )
+
+    cfg = _load_config(args.config)
+    state = _init_state(cfg)
+
+    if args.types:
+        _print_banner("Outcome types")
+        for t in OUTCOME_TYPES:
+            flag = "positive" if t.positive else ("final" if t.terminal else "")
+            print(f"  {t.key:<12} {t.help}")
+            if flag:
+                print(f"               [{flag}]")
+        return 0
+
+    if args.summary:
+        _print_banner("Application Funnel")
+        print(format_summary(outcome_summary(state)))
+        return 0
+
+    if args.ghost_sweep:
+        _print_banner("Ghost Sweep")
+        rows = sweep_ghosted(state, args.days, dry_run=not args.yes)
+        if not rows:
+            print(f"\n  Nothing has been silent for {args.days}+ days.")
+            return 0
+        if not args.yes:
+            print(f"\n  {len(rows)} application(s) silent for {args.days}+ days:\n")
+            for r in rows[:20]:
+                print(f"    {r['days_quiet']:>5.0f}d  {(r['company'] or '?')[:30]:<30} "
+                      f"{(r['title'] or '?')[:34]}")
+            if len(rows) > 20:
+                print(f"    … and {len(rows) - 20} more.")
+            print(f"\n  Re-run with --yes to mark these {len(rows)} as ghosted.")
+        else:
+            print(f"\n  Marked {len(rows)} application(s) as ghosted.")
+        return 0
+
+    # No query and no type: show what is still waiting.
+    if not args.query:
+        _print_banner("Open Applications")
+        print(format_pending(pending_applications(state, args.quiet_days)))
+        return 0
+
+    matches = find_applications(state, args.query)
+    if not matches:
+        print(f"\n  No application matches {args.query!r}.")
+        print("  Run  lla outcome  with no arguments to see what is open.")
+        return 1
+    if len(matches) > 1 and not args.job_id:
+        print(f"\n  {args.query!r} matches {len(matches)} applications:\n")
+        for m in matches[:15]:
+            print(f"    {(m['company'] or '?')[:28]:<28} {(m['title'] or '?')[:38]}")
+            print(f"      applied {m['applied_at']}   id: {m['job_id']}")
+        print("\n  Narrow it down, or pick one with --job-id <id>.")
+        return 1
+    job = matches[0] if not args.job_id else next(
+        (m for m in matches if m["job_id"] == args.job_id), None)
+    if job is None:
+        print(f"\n  --job-id {args.job_id!r} is not among the matches.")
+        return 1
+
+    if not args.type:
+        print(f"\n  {job['title']} @ {job['company']}  (applied {job['applied_at']})")
+        print("\n  What happened? Pass --type with one of:")
+        for t in OUTCOME_TYPES:
+            print(f"    {t.key:<12} {t.help}")
+        return 2
+
+    key = normalise_type(args.type)
+    if not key:
+        print(f"\n  {args.type!r} is not an outcome. Use one of: {', '.join(ALL_TYPES)}")
+        return 1
+
+    when = None
+    if args.when:
+        when = parse_when(args.when)
+        if when is None:
+            print(f"\n  Could not read the date {args.when!r}.")
+            print("  Try 2026-08-14, 14/08/2026, '3 days ago', yesterday, or today.")
+            return 1
+
+    ok, msg = record_outcome(state, job["job_id"], key, notes=args.notes or "",
+                             when=when, allow_duplicate=args.force)
+    print(f"\n  {msg}")
+    if not ok:
+        return 1
+    if BY_KEY[key].positive:
+        print("  Every model that predicts ghosting, response time and success")
+        print("  learns from this. Thank you for closing the loop.")
+    return 0
+
+
+def cmd_expand(args):
+    """Enrich the profile from public sources, citing every finding."""
+    _print_banner("Profile Expansion")
+    from profile_expand import (
+        apply_findings,
+        discover_sources,
+        expand_profile,
+        format_report,
+        to_json,
+    )
+
+    cfg = _load_config(args.config)
+    extra = list(args.url or [])
+    sources = discover_sources(cfg) + extra
+    if not sources:
+        print("  No public sources found.\n")
+        print("  Add a GitHub, portfolio, Kaggle or Scholar URL to config.yaml")
+        print("  under question_answers, or pass one directly:")
+        print("      lla expand --url https://github.com/you")
+        return 2
+
+    print(f"  Reading {len(sources)} source(s). Every fetch honours robots.txt.\n")
+    report = expand_profile(cfg, extra)
+
+    changes = None
+    write_msg = ""
+    if args.apply:
+        cfg, changes = apply_findings(cfg, report, args.min_confidence)
+        if changes:
+            from profile_expand import write_config_additions
+            ok, write_msg = write_config_additions(args.config, changes)
+            if not ok:
+                print(f"\n  {write_msg}")
+                return 1
+
+    if args.json:
+        print(to_json(report, changes))
+    else:
+        print(format_report(report, changes))
+        if changes:
+            print(f"\n  Wrote {len(changes)} field(s). {write_msg}")
+        elif not args.apply and report.findings:
+            print("\n  Nothing was written. Re-run with --apply to fill blank")
+            print("  config fields with these findings; your own answers are kept.")
+    return 0
+
+
+def cmd_robots(args):
+    """Report what each site's robots.txt permits for the URLs given."""
+    _print_banner("robots.txt compliance (RFC 9309)")
+    from tools.robots_check import DEFAULT_AGENT, check_urls
+
+    urls = list(args.urls or [])
+    if args.file:
+        try:
+            urls += [ln.strip() for ln in open(args.file, encoding="utf-8")
+                     if ln.strip() and not ln.strip().startswith("#")]
+        except OSError as exc:
+            print(f"  Could not read {args.file}: {exc}")
+            return 1
+    if not urls:
+        print("  Give one or more URLs, or --file with one URL per line.")
+        return 2
+
+    agent = args.agent or DEFAULT_AGENT
+    results = check_urls(urls, agent)
+    denied = [(u, v) for u, v in results if not v.allowed]
+
+    for url, v in results:
+        print(f"  {'ALLOW' if v.allowed else 'DENY '}  {url}")
+        print(f"          {v.rule or v.reason}")
+
+    print(f"\n  agent: {agent}")
+    print(f"  {len(results) - len(denied)} allowed, {len(denied)} not allowed")
+    if denied:
+        print("\n  'Not allowed' also covers robots.txt files that could not be read —")
+        print("  permission is never assumed. Review these before fetching them")
+        print("  automatically; a site that has said no should be left alone.")
+    return 1 if denied else 0
+
+
 def cmd_stats(args):
     """Show application statistics."""
     _print_banner("Application Statistics")
@@ -941,6 +1515,16 @@ def build_parser() -> argparse.ArgumentParser:
               lla validate-config              Check config.yaml
               lla skill-gaps                   Skill gap report
               lla salary --role "Engineer"     Salary benchmarks
+              lla outcome "Monzo" --type interview   Record what happened
+              lla sync-email                  Propose outcomes from recruiter email
+              lla expand                       Enrich profile from your public presence
+              lla robots https://site/jobs     What robots.txt permits (RFC 9309)
+              lla profile --login             Sign a dedicated Chrome profile in once
+              lla autopilot status            Is the 24/7 bot up? applies today?
+              lla pacing                      Humanised protocol for Claude for Chrome
+              lla chrome-session              Runbook for Claude in Chrome to apply end to end
+              lla reset --what cache           Clear regenerable state (backed up)
+              lla add-template mine.html      Check + install a CV template
               lla setup                        Interactive setup
         """),
     )
@@ -962,6 +1546,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--company", help="Company name")
     p.add_argument("--min-coverage", dest="min_coverage", type=int, default=60,
                    help="Min ATS keyword-coverage %% to pass (default 60)")
+    p.add_argument("--max-pages", dest="max_pages", type=int, default=2,
+                   help="Page budget for the rendered CV (default 2)")
 
     # --- screen ---
     p = subs.add_parser("screen", help="Simulate the employer-side AI resume screen for a JD")
@@ -1091,6 +1677,98 @@ def build_parser() -> argparse.ArgumentParser:
     # --- stats ---
     subs.add_parser("stats", help="Show application statistics")
 
+    # --- profile ---
+    p = subs.add_parser("profile",
+                        help="Create / verify / sign into the Chrome profile the bot uses")
+    p.add_argument("path", nargs="?", help="Profile directory (default: from config)")
+    p.add_argument("--check", action="store_true", help="Report the profile's state (default)")
+    p.add_argument("--create", action="store_true", help="Create the directory")
+    p.add_argument("--login", action="store_true",
+                   help="Open Chrome on it so you sign in once, by hand")
+    p.add_argument("--chrome", help="Path to the Chrome binary, if not auto-detected")
+    p.add_argument("--timeout", type=int, default=300,
+                   help="Seconds to wait for the sign-in (default 300)")
+
+    # --- chrome-session ---
+    p = subs.add_parser("chrome-session",
+                        help="Runbook + live state for a browser agent (Claude in Chrome)")
+    p.add_argument("--terms", help="Comma-separated search terms (default: from config)")
+    p.add_argument("--status", action="store_true", help="Where the session stands")
+    p.add_argument("--release-claims", action="store_true",
+                   help="Abandon jobs claimed by a session that never reported back")
+    p.add_argument("--json", action="store_true", help="Machine-readable output")
+
+    # --- pacing ---
+    p = subs.add_parser("pacing", help="Humanised-behaviour protocol for Claude for Chrome")
+    p.add_argument("--profile", default="normal", choices=["careful", "normal", "fast"],
+                   help="How brisk (default: normal)")
+    p.add_argument("--write", action="store_true",
+                   help="Regenerate the block in tests/e2e/CLAUDE_IN_CHROME.md")
+    p.add_argument("--quiet", action="store_true", help="Protocol only, no banner")
+
+    # --- autopilot ---
+    p = subs.add_parser("autopilot", help="Run the bot 24/7: status, start, stop, restart, watch")
+    p.add_argument("action", nargs="?", default="status",
+                   choices=["status", "start", "stop", "restart", "watch",
+                            "preflight"],
+                   help="Default: status")
+
+    # --- reset ---
+    p = subs.add_parser("reset", help="Clear part of the local database (backed up first)")
+    p.add_argument("--what", help="cache, analysis, queues, contacts, outcomes, applications, all")
+    p.add_argument("--yes", action="store_true", help="Actually delete (default is a preview)")
+    p.add_argument("--list", action="store_true", help="Describe the scopes")
+
+    # --- add-template ---
+    p = subs.add_parser("add-template", help="Check and install a custom CV template")
+    p.add_argument("template", nargs="?", help="Path to an HTML template")
+    p.add_argument("--dest", help="Where to install it (default templates/cv-template.html)")
+    p.add_argument("--dir", default="templates", help="Where templates live")
+    p.add_argument("--check-only", action="store_true", help="Check without installing")
+    p.add_argument("--show-default", action="store_true", help="Print the built-in template")
+    p.add_argument("--list", action="store_true", help="List installed templates")
+
+    # --- sync-email ---
+    p = subs.add_parser("sync-email", help="Propose outcomes from recruiter email (approval-gated)")
+    p.add_argument("--apply", action="store_true", help="Record the proposals (default: high confidence only)")
+    p.add_argument("--all", action="store_true", help="With --apply, include uncertain matches too")
+    p.add_argument("--days", type=int, default=90, help="How far back to read (IMAP only)")
+    p.add_argument("--emails-file", help="JSON list of {id,from,subject,body,date} from any client")
+    p.add_argument("--json", action="store_true", help="Machine-readable output")
+
+    # --- outcome ---
+    p = subs.add_parser("outcome", help="Record what happened to an application (closes the learning loop)")
+    p.add_argument("query", nargs="?", help="Company, title, job id or URL")
+    p.add_argument("--type", help="callback, assessment, interview, offer, rejection, withdrawn, ghosted")
+    p.add_argument("--notes", help="Anything worth remembering")
+    p.add_argument("--when", help="When it happened (2026-08-14, '3 days ago', yesterday)")
+    p.add_argument("--job-id", help="Exact job id, when the query matches several")
+    p.add_argument("--force", action="store_true", help="Record an outcome already logged")
+    p.add_argument("--summary", action="store_true", help="Show the application funnel")
+    p.add_argument("--types", action="store_true", help="List the outcome types")
+    p.add_argument("--quiet-days", type=int, default=0,
+                   help="Only list applications silent this many days")
+    p.add_argument("--ghost-sweep", action="store_true",
+                   help="Mark long-silent applications as ghosted")
+    p.add_argument("--days", type=int, default=45, help="Silence threshold for --ghost-sweep")
+    p.add_argument("--yes", action="store_true", help="Actually apply --ghost-sweep")
+
+    # --- expand ---
+    p = subs.add_parser("expand", help="Enrich your profile from your public online presence")
+    p.add_argument("--url", action="append", help="Extra source URL (repeatable)")
+    p.add_argument("--apply", action="store_true",
+                   help="Fill BLANK config fields with the findings (never overwrites)")
+    p.add_argument("--min-confidence", default="medium",
+                   choices=["low", "medium", "high"],
+                   help="Lowest confidence --apply will write (default: medium)")
+    p.add_argument("--json", action="store_true", help="Machine-readable output")
+
+    # --- robots ---
+    p = subs.add_parser("robots", help="Check URLs against each site's robots.txt (RFC 9309)")
+    p.add_argument("urls", nargs="*", help="One or more absolute URLs")
+    p.add_argument("--file", help="File with one URL per line")
+    p.add_argument("--agent", help="Product token to check as (default: LightningApplier)")
+
     # --- setup ---
     subs.add_parser("setup", help="Interactive setup wizard")
 
@@ -1127,6 +1805,16 @@ COMMAND_MAP = {
     "validate-config": cmd_validate_config,
     "export": cmd_export,
     "stats": cmd_stats,
+    "outcome": cmd_outcome,
+    "sync-email": cmd_sync_email,
+    "profile": cmd_profile,
+    "chrome-session": cmd_chrome_session,
+    "pacing": cmd_pacing,
+    "autopilot": cmd_autopilot,
+    "reset": cmd_reset,
+    "add-template": cmd_add_template,
+    "expand": cmd_expand,
+    "robots": cmd_robots,
     "setup": cmd_setup,
 }
 
@@ -1147,7 +1835,11 @@ def main():
         sys.exit(1)
 
     try:
-        handler(args)
+        # A handler that returns an int is reporting an exit code (0 = success).
+        # Returning None — what most handlers do — still exits 0.
+        code = handler(args)
+        if isinstance(code, int) and code != 0:
+            sys.exit(code)
     except KeyboardInterrupt:
         print("\n  Interrupted.")
         sys.exit(130)
