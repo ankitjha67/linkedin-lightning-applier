@@ -313,6 +313,143 @@ class TestAnswers(unittest.TestCase):
             cb.remember(self.state, cfg(), [{"label": "x", "value": ""}]), 0)
 
 
+class TestProfileFields(unittest.TestCase):
+    """Your own name, email and phone — the fields every form asks for.
+
+    These resolved to `unanswered` at first, because only question_answers was
+    consulted. That meant the agent had to stop and ask for the applicant's own
+    email address on every single application, which makes the whole handoff
+    pointless.
+    """
+
+    FULL = {
+        "personal": {"first_name": "Ada", "last_name": "Lovelace",
+                     "full_name": "Ada Lovelace", "email": "ada@example.com",
+                     "phone": "+44 7000 000000", "city": "London",
+                     "state": "Greater London", "zip_code": "EC1A",
+                     "country": "United Kingdom",
+                     "linkedin_headline": "Risk Manager @ Monzo"},
+        "application": {"years_of_experience": 8, "notice_period_days": "30",
+                        "desired_salary": "Negotiable", "current_ctc": "90000",
+                        "willing_to_relocate": "Yes"},
+    }
+
+    CASES = [
+        ("First name", "Ada"), ("Given name", "Ada"),
+        ("Last name", "Lovelace"), ("Surname", "Lovelace"),
+        ("Full legal name", "Ada Lovelace"),
+        ("Email", "ada@example.com"), ("E-mail address", "ada@example.com"),
+        ("Mobile phone number", "+44 7000 000000"), ("Telephone", "+44 7000 000000"),
+        ("City", "London"), ("State / Province", "Greater London"),
+        ("Postal code", "EC1A"), ("Zip code", "EC1A"),
+        ("Country of residence", "United Kingdom"),
+        ("Current job title", "Risk Manager @ Monzo"),
+        ("Years of experience", "8"),
+        ("How many years of experience do you have?", "8"),
+        ("Notice period", "30"), ("Expected salary", "Negotiable"),
+        ("Current CTC", "90000"), ("Willing to relocate?", "Yes"),
+    ]
+
+    def test_every_common_label_resolves(self):
+        for label, expected in self.CASES:
+            value, where = cb._profile_answer(self.FULL, label)
+            self.assertEqual(value, expected, f"{label!r} -> {value!r} ({where})")
+
+    def test_the_source_says_where_the_value_came_from(self):
+        _value, where = cb._profile_answer(self.FULL, "Email")
+        self.assertEqual(where, "personal.email")
+
+    def test_a_field_with_no_configured_value_is_not_invented(self):
+        value, _where = cb._profile_answer({"personal": {}}, "Email")
+        self.assertEqual(value, "")
+
+    def test_an_unrelated_label_matches_nothing(self):
+        value, _where = cb._profile_answer(
+            self.FULL, "Describe a conflict you resolved")
+        self.assertEqual(value, "")
+
+    def test_first_name_is_not_swallowed_by_the_name_pattern(self):
+        # Ordering matters: "first name" must beat the bare-name pattern.
+        self.assertEqual(cb._profile_answer(self.FULL, "First name")[1],
+                         "personal.first_name")
+
+    def test_profile_answers_come_through_the_bridge(self):
+        state = fresh_state()
+        config = cfg(**self.FULL)
+        out = cb.answers(state, config, [{"label": "Email address"}])
+        answer = out["answers"][0]
+        self.assertEqual(answer["value"], "ada@example.com")
+        self.assertEqual(answer["source"], "profile")
+        self.assertIn("personal.email", answer["note"])
+
+    def test_question_answers_still_win_over_the_profile(self):
+        # An answer the user wrote by hand beats a derived one.
+        state = fresh_state()
+        config = cfg(question_answers={"notice period": "2 months"},
+                     **self.FULL)
+        out = cb.answers(state, config, [{"label": "What is your notice period?"}])
+        self.assertEqual(out["answers"][0]["value"], "2 months")
+        self.assertEqual(out["answers"][0]["source"], "config")
+
+    def test_a_realistic_easy_apply_form_is_mostly_answered(self):
+        state = fresh_state()
+        config = cfg(**self.FULL)
+        form = [
+            {"label": "First name"}, {"label": "Last name"},
+            {"label": "Email address"}, {"label": "Mobile phone number"},
+            {"label": "City"}, {"label": "Country"},
+            {"label": "Are you legally authorised to work in the United Kingdom?",
+             "options": ["Yes", "No"]},
+            {"label": "Will you now or in the future require sponsorship?",
+             "options": ["Yes", "No"]},
+            {"label": "What is your notice period?"},
+            {"label": "Years of experience"},
+            {"label": "Are you willing to relocate?", "options": ["Yes", "No"]},
+        ]
+        out = cb.answers(state, config, form, job_location="London")
+        self.assertEqual(out["unanswered"], [],
+                         f"a routine form left gaps: {out['unanswered']}")
+
+
+class TestValidatorCatchesBadWorkAuth(unittest.TestCase):
+    """`lla validate-config` and autopilot preflight must catch this shape."""
+
+    def _validate(self, wa):
+        from validate_config import ConfigValidator
+        config = {"personal": {"first_name": "Ada"},
+                  "search": {"search_terms": ["x"], "search_locations": ["London"]},
+                  "work_authorization": wa}
+        validator = ConfigValidator(config)
+        return validator.validate(), validator.errors, validator.warnings
+
+    def test_a_string_citizenship_is_valid(self):
+        ok, errors, _warnings = self._validate({"citizenship": "United Kingdom"})
+        self.assertTrue(ok, errors)
+
+    def test_a_list_citizenship_is_valid(self):
+        ok, errors, _warnings = self._validate({"citizenship": ["India"]})
+        self.assertTrue(ok, errors)
+
+    def test_an_unrecognised_country_fails_validation(self):
+        ok, errors, _warnings = self._validate({"citizenship": ["Untied Kingdom"]})
+        self.assertFalse(ok, "a typo'd country passed validation")
+        self.assertTrue(any("work_authorization" in e for e in errors))
+
+    def test_the_error_explains_the_consequence(self):
+        _ok, errors, _warnings = self._validate({"citizenship": ["Elbonia"]})
+        joined = " ".join(errors)
+        self.assertIn("answer No", joined)
+
+    def test_a_partly_unrecognised_list_is_only_a_warning(self):
+        ok, _errors, warnings = self._validate({"citizenship": ["India", "Elbonia"]})
+        self.assertTrue(ok)
+        self.assertTrue(any("not recognised" in w for w in warnings))
+
+    def test_an_unconfigured_section_is_not_an_error(self):
+        ok, errors, _warnings = self._validate({})
+        self.assertTrue(ok, errors)
+
+
 class TestWorkAuthMisconfiguration(unittest.TestCase):
     """The sharpest edge in the whole system.
 

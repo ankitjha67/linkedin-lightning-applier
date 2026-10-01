@@ -44,6 +44,7 @@ class ConfigValidator:
         self._check_scheduling()
         self._check_filters()
         self._check_resume()
+        self._check_work_authorization()
         self._check_feature_deps()
         self._check_file_paths()
         self._check_numeric_values()
@@ -120,6 +121,35 @@ class ConfigValidator:
                 import fpdf  # noqa: F401
             except ImportError:
                 self.warnings.append("resume_tailoring pdf requires fpdf2")
+
+    def _check_work_authorization(self):
+        """A work-auth config that resolves to nothing answers No to everything.
+
+        This is the one misconfiguration that is both easy to make and
+        invisible: `citizenship` takes a list, the key reads singular, and YAML
+        accepts a bare string. Unrecognised country names leave the bot telling
+        every employer the candidate cannot work for them, on every
+        application. It is an error, not a warning.
+        """
+        wa = self.cfg.get("work_authorization", {}) or {}
+        if not (wa.get("citizenship") or wa.get("visas")):
+            return                      # not configured; legacy answers apply
+        try:
+            from work_auth import WorkAuthorization
+            auth = WorkAuthorization(self.cfg)
+        except Exception as exc:
+            self.warnings.append(f"could not check work_authorization ({exc})")
+            return
+        if not auth.usable:
+            named = ", ".join(auth.unresolved[:5]) or "the values given"
+            self.errors.append(
+                f"work_authorization is set but no country was recognised "
+                f"({named}) — every 'authorised to work?' would answer No and "
+                f"every sponsorship question Yes. Check the spelling.")
+        elif auth.unresolved:
+            self.warnings.append(
+                "work_authorization: these countries were not recognised and "
+                "are being ignored: " + ", ".join(auth.unresolved[:5]))
 
     def _check_feature_deps(self):
         checks = [

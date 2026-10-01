@@ -41,6 +41,7 @@ field-level reporting rather than a summary.
 """
 
 import logging
+import re
 from datetime import datetime, timedelta
 
 log = logging.getLogger("lla.chrome_bridge")
@@ -115,7 +116,6 @@ def job_id_for(url: str, title: str = "", company: str = "") -> str:
     reached by two different URLs still deduplicates.
     """
     import hashlib
-    import re
     m = re.search(r"(?:currentJobId=|/jobs/view/)(\d{6,})", url or "")
     if m:
         return f"li-{m.group(1)}"
@@ -239,6 +239,50 @@ def consider(state, cfg, url: str, title: str = "", company: str = "",
 # What to type
 # ---------------------------------------------------------------------------
 
+# Fields every form asks and the engine already knows, mapped from label text
+# to where the value lives. Without this the commonest fields on any
+# application — your own email and phone — come back unanswered, and the agent
+# has to stop and ask you for them on every single job.
+#
+# Ordered: the first pattern that matches a label wins, so the more specific
+# patterns come first ("first name" before "name").
+PERSONAL_FIELDS = [
+    (re.compile(r"\b(first|given|fore)\s*name\b", re.I), ("personal", "first_name")),
+    (re.compile(r"\b(last|sur|family)\s*name\b", re.I), ("personal", "last_name")),
+    (re.compile(r"\b(full|legal)\s*name\b|^name$", re.I), ("personal", "full_name")),
+    (re.compile(r"\be-?mail\b", re.I), ("personal", "email")),
+    (re.compile(r"\b(phone|mobile|telephone|cell)\b|\bcontact number\b", re.I),
+     ("personal", "phone")),
+    (re.compile(r"\b(city|town)\b", re.I), ("personal", "city")),
+    (re.compile(r"\b(state|province|county)\b", re.I), ("personal", "state")),
+    (re.compile(r"\b(zip|post\s*code|postal\s*code)\b", re.I), ("personal", "zip_code")),
+    (re.compile(r"\bcountry\b", re.I), ("personal", "country")),
+    (re.compile(r"\b(headline|current title|job title)\b", re.I),
+     ("personal", "linkedin_headline")),
+    (re.compile(r"\byears?\b.*\bexperience\b|\bexperience\b.*\byears?\b", re.I),
+     ("application", "years_of_experience")),
+    (re.compile(r"\bnotice period\b|\bperiod of notice\b", re.I),
+     ("application", "notice_period_days")),
+    (re.compile(r"\b(desired|expected)\s+(salary|compensation|ctc)\b", re.I),
+     ("application", "desired_salary")),
+    (re.compile(r"\b(current)\s+(salary|compensation|ctc)\b", re.I),
+     ("application", "current_ctc")),
+    (re.compile(r"\b(willing to )?relocat", re.I),
+     ("application", "willing_to_relocate")),
+]
+
+
+def _profile_answer(cfg, label: str):
+    """(value, section.key) from `personal` / `application`, or ('', '')."""
+    for pattern, (section, key) in PERSONAL_FIELDS:
+        if not pattern.search(label or ""):
+            continue
+        value = ((cfg or {}).get(section, {}) or {}).get(key, "")
+        if value not in (None, ""):
+            return str(value), f"{section}.{key}"
+    return "", ""
+
+
 def _config_answer(cfg, label: str) -> str:
     """An answer the user wrote in question_answers, matched loosely."""
     qa = (cfg or {}).get("question_answers", {}) or {}
@@ -338,6 +382,14 @@ def answers(state, cfg, questions, job_location: str = "",
             out.append({**entry, "value": configured, "source": "config",
                         "confidence": "high",
                         "note": "from question_answers in config.yaml"})
+            continue
+
+        # Your own name, email, phone, city — the fields every form asks for.
+        profile_value, where = _profile_answer(cfg, label)
+        if profile_value:
+            out.append({**entry, "value": profile_value, "source": "profile",
+                        "confidence": "high",
+                        "note": f"from {where} in config.yaml"})
             continue
 
         entry["note"] = ("nothing on record answers this — ask me rather than "

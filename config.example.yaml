@@ -70,8 +70,17 @@ search:
 # (zero LLM tokens) and NEVER cached across countries.
 # ═══════════════════════════════════════════════════════════════
 work_authorization:
+  # Countries where you can work by right. A LIST — but a single country
+  # written as a plain string (citizenship: "India") is accepted too, because
+  # the key reads singular and that is the natural thing to write.
+  #
+  # Spelling matters. If none of the names here is recognised, every
+  # "are you authorised to work in X?" would answer No and every "do you
+  # require sponsorship?" would answer Yes — on every application. The bot
+  # refuses to answer at all in that case rather than answering wrongly, and
+  # `lla validate-config` fails, so you find out before applying and not after.
   citizenship:
-    - "India"                    # countries where you can work by right
+    - "India"
   visas: []                      # work authorizations you hold, e.g.:
   #  - country: "United Kingdom"
   #    type: "Skilled Worker"    # optional, informational
