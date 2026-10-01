@@ -286,6 +286,14 @@ browser:
   # mismatch. Only set a number to force a specific major version.
   chrome_version: null
   auto_update_driver: true       # on a launch mismatch, upgrade the driver package and retry
+  # chrome_binary: leave blank to auto-detect. Set it when Chrome/Chromium is
+  # somewhere the driver will not look: a container, a snap or flatpak install,
+  # a portable build. Without a findable browser the driver fails with
+  # "Binary Location Must be a String", which names neither cause nor fix.
+  #   Linux : /usr/bin/chromium   or  /opt/google/chrome/chrome
+  #   macOS : /Applications/Google Chrome.app/Contents/MacOS/Google Chrome
+  #   Windows: C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe
+  chrome_binary: ""
   window_width: 1280
   window_height: 900
   user_data_dir: ""

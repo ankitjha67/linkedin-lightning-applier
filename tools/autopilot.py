@@ -267,6 +267,47 @@ def preflight(config: str = "config.yaml") -> list:
         problems.append((f"the configured resume is missing: {resume}",
                          "point resume.default_resume_path at a file that exists"))
 
+    # Unattended running needs a way to authenticate without a person. Headless
+    # with no credentials and no saved profile is a dead end: the bot reaches
+    # LinkedIn's login page, asks for a manual login into a window nobody can
+    # see, waits three minutes, and does it again — looking perfectly healthy
+    # to the watchdog the whole time. Worse than crashing, because nothing
+    # restarts or reports it.
+    browser = cfg.get("browser", {}) or {}
+    linkedin = cfg.get("linkedin", {}) or {}
+    has_credentials = bool(linkedin.get("email") and linkedin.get("password"))
+    has_profile = bool((browser.get("user_data_dir") or "").strip())
+    if not has_credentials and not has_profile:
+        message = ("no linkedin.email/password and no browser.user_data_dir — "
+                   "the bot cannot sign in on its own")
+        fix = ("set linkedin.email and linkedin.password, or point "
+               "browser.user_data_dir at a Chrome profile already signed in")
+        if browser.get("headless"):
+            problems.append((message + " and headless is on, so the manual "
+                             "login it falls back to is impossible", fix))
+        else:
+            problems.append(("ADVISORY: " + message + " — it will wait for you "
+                             "to log in by hand on each start", fix))
+
+    # A browser the driver cannot find fails with "Binary Location Must be a
+    # String", which names neither the problem nor the fix.
+    configured_binary = (browser.get("chrome_binary") or "").strip()
+    if configured_binary and not Path(configured_binary).exists():
+        problems.append((f"browser.chrome_binary points at {configured_binary!r}, "
+                         "which does not exist",
+                         "correct the path, or remove it to auto-detect"))
+    elif not configured_binary:
+        try:
+            sys.path.insert(0, str(ROOT))
+            from env_doctor import detect_chrome_binary
+            if not detect_chrome_binary():
+                problems.append((
+                    "no Chrome or Chromium found on this machine",
+                    "install Google Chrome, or set browser.chrome_binary in "
+                    "config.yaml to the executable's full path"))
+        except Exception as exc:
+            log.debug("chrome detection skipped: %s", exc)
+
     # Applying round the clock is a louder signal than anything per-click
     # pacing can cover, and autopilot is what makes it possible.
     try:
@@ -342,6 +383,39 @@ def start(config: str = "config.yaml", reason: str = "manual",
     return True, f"started (pid {proc.pid}), logging to {log_path}"
 
 
+def _signal_tree(pid: int, sig) -> bool:
+    """Signal the bot AND the browser it started. True if anything was signalled.
+
+    The bot is spawned with `start_new_session=True`, which makes it the leader
+    of its own process group — so the whole tree, Chrome included, can be
+    signalled at once. Signalling only the bot's pid leaves Chrome running:
+    thirteen processes survived one forced stop in testing, and on a 24/7
+    autopilot that restarts, those accumulate until the machine runs out of
+    memory.
+    """
+    if sys.platform.startswith("win"):
+        try:
+            flag = ["/F"] if sig == signal.SIGKILL else []
+            subprocess.run(["taskkill", "/PID", str(pid), "/T", *flag],
+                           capture_output=True, timeout=20)
+            return True
+        except Exception:
+            return False
+    sent = False
+    try:
+        os.killpg(os.getpgid(pid), sig)     # the bot and its browser
+        sent = True
+    except Exception as exc:
+        log.debug("could not signal the process group of %s: %s", pid, exc)
+    if not sent:
+        try:
+            os.kill(pid, sig)               # fall back to the bot alone
+            sent = True
+        except Exception as exc:
+            log.debug("could not signal pid %s: %s", pid, exc)
+    return sent
+
+
 def stop(timeout: int = STOP_GRACE) -> tuple:
     """Ask the bot to stop, then insist. (ok, message)."""
     running, lock = is_running()
@@ -352,14 +426,8 @@ def stop(timeout: int = STOP_GRACE) -> tuple:
 
     # main.py installs a SIGTERM handler that closes the browser and the
     # database cleanly, so give it that chance before killing it.
-    try:
-        if sys.platform.startswith("win"):
-            subprocess.run(["taskkill", "/PID", str(pid), "/T"],
-                           capture_output=True, timeout=20)
-        else:
-            os.kill(pid, signal.SIGTERM)
-    except Exception as exc:
-        return False, f"could not signal pid {pid}: {exc}"
+    if not _signal_tree(pid, signal.SIGTERM):
+        return False, f"could not signal pid {pid}"
 
     deadline = time.time() + timeout
     while time.time() < deadline:
@@ -368,16 +436,11 @@ def stop(timeout: int = STOP_GRACE) -> tuple:
             return True, f"stopped (pid {pid})"
         time.sleep(1)
 
-    try:
-        if sys.platform.startswith("win"):
-            subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"],
-                           capture_output=True, timeout=20)
-        else:
-            os.kill(pid, signal.SIGKILL)
-    except Exception as exc:
-        return False, f"pid {pid} would not stop: {exc}"
+    if not _signal_tree(pid, signal.SIGKILL):
+        return False, f"pid {pid} would not stop"
     clear_lock()
-    return True, f"stopped (pid {pid}, forced after {timeout}s)"
+    return True, (f"stopped (pid {pid}, forced after {timeout}s — the browser "
+                  "was taken down with it)")
 
 
 # ---------------------------------------------------------------------------

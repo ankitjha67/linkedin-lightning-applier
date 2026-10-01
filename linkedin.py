@@ -89,6 +89,33 @@ def create_browser(cfg: dict):
     ud = bc.get("user_data_dir", "")
     if ud:
         opts.add_argument(f"--user-data-dir={ud}")
+
+    # Tell the driver WHERE Chrome is. undetected-chromedriver only looks in
+    # standard locations, and when it finds nothing it fails with
+    # "Binary Location Must be a String" — an error naming neither the problem
+    # nor the fix. Anyone on Chromium, a non-standard install, or a container
+    # (including this project's own Docker image) hits exactly that.
+    binary = (bc.get("chrome_binary") or "").strip()
+    if not binary:
+        try:
+            from env_doctor import detect_chrome_binary
+            binary = detect_chrome_binary()
+            if binary:
+                log.info(f"Using browser at {binary}")
+        except Exception:
+            binary = ""
+    if binary:
+        if not os.path.exists(binary):
+            raise RuntimeError(
+                f"browser.chrome_binary points at {binary!r}, which does not "
+                "exist. Correct it in config.yaml, or remove it to auto-detect.")
+        opts.binary_location = binary
+    else:
+        raise RuntimeError(
+            "No Chrome or Chromium could be found on this machine. Install "
+            "Google Chrome, or set browser.chrome_binary in config.yaml to the "
+            "executable's full path. (Without it the driver fails with the "
+            "unhelpful 'Binary Location Must be a String'.)")
     # Pin ChromeDriver to the INSTALLED Chrome version. Config wins; otherwise
     # auto-detect (Windows registry / mac / linux binaries) so a fresh machine
     # never hits "ChromeDriver only supports Chrome version NNN".
@@ -462,6 +489,19 @@ def _wait_for_manual_login(driver, timeout_sec: int = 180) -> bool:
         except KeyboardInterrupt:
             log.info("Interrupted. Exiting login wait.")
             return False
+
+        # Honour a shutdown request. main.py's SIGTERM handler sets this flag,
+        # but this loop never looked at it — so `autopilot stop` waited out its
+        # whole grace period and then had to SIGKILL, which skips driver.quit()
+        # and leaves the browser orphaned. Imported late: main imports this
+        # module, so a top-level import would be circular.
+        try:
+            import main as _main
+            if getattr(_main, "shutdown_requested", False):
+                log.info("Shutdown requested — leaving the login wait.")
+                return False
+        except Exception:
+            pass
 
         try:
             if is_logged_in(driver):

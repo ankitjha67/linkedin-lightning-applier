@@ -297,6 +297,188 @@ class TestPreflight(SandboxedAutopilot):
         self.assertIn("every restart", msg)
 
 
+class TestBrowserDiscovery(unittest.TestCase):
+    """A browser the driver cannot find fails uselessly.
+
+    undetected-chromedriver looks only in standard locations and reports
+    "Binary Location Must be a String" when it finds nothing — naming neither
+    the cause nor the fix. That is what anyone on Chromium, a snap install, or
+    this project's own Docker image hits.
+    """
+
+    def test_detection_returns_a_path_or_an_empty_string(self):
+        from env_doctor import detect_chrome_binary
+        found = detect_chrome_binary()
+        self.assertIsInstance(found, str)
+        if found:
+            self.assertTrue(Path(found).exists(), found)
+
+    def test_a_found_binary_is_executable(self):
+        from env_doctor import detect_chrome_binary
+        found = detect_chrome_binary()
+        if not found:
+            self.skipTest("no browser on this machine")
+        self.assertTrue(os.access(found, os.X_OK))
+
+    def test_version_detection_falls_back_to_the_located_binary(self):
+        # On a container Chrome is not on PATH, so without this the driver
+        # cannot be pinned to the installed version either.
+        from env_doctor import detect_chrome_binary, detect_chrome_version
+        if not detect_chrome_binary():
+            self.skipTest("no browser on this machine")
+        version = detect_chrome_version()
+        self.assertTrue(version is None or int(version) > 0)
+
+    def test_the_launcher_sets_the_binary_location(self):
+        source = (REPO / "linkedin.py").read_text(encoding="utf-8")
+        self.assertIn("binary_location", source,
+                      "create_browser no longer tells the driver where Chrome is")
+        self.assertIn("detect_chrome_binary", source)
+
+    def test_the_launcher_error_names_the_config_key(self):
+        source = (REPO / "linkedin.py").read_text(encoding="utf-8")
+        self.assertIn("browser.chrome_binary", source)
+
+    def test_the_example_config_documents_the_option(self):
+        import yaml
+        cfg = yaml.safe_load((REPO / "config.example.yaml").read_text(encoding="utf-8"))
+        self.assertIn("chrome_binary", cfg.get("browser", {}))
+
+
+class TestUnattendedLoginPreflight(SandboxedAutopilot):
+    """Headless with no way to sign in is worse than a crash.
+
+    The bot reaches LinkedIn's login page, asks for a manual login into a
+    window nobody can see, waits three minutes and repeats — looking healthy to
+    the watchdog the whole time, so nothing restarts or reports it.
+    """
+
+    def _write(self, extra):
+        (self.dir / "config.yaml").write_text(VALID_CONFIG + extra, encoding="utf-8")
+
+    def test_headless_with_no_credentials_blocks(self):
+        self._write("browser:\n  headless: true\n")
+        blocking = [p for p, _f in ap.preflight()
+                    if not p.startswith("ADVISORY:")]
+        self.assertTrue(any("cannot sign in" in p for p in blocking), blocking)
+
+    def test_the_fix_names_both_ways_out(self):
+        self._write("browser:\n  headless: true\n")
+        fixes = [f for p, f in ap.preflight() if "cannot sign in" in p]
+        self.assertTrue(fixes)
+        self.assertIn("user_data_dir", fixes[0])
+        self.assertIn("linkedin.email", fixes[0])
+
+    def test_credentials_satisfy_it(self):
+        self._write("browser:\n  headless: true\n"
+                    "linkedin:\n  email: a@b.com\n  password: secret\n")
+        blocking = [p for p, _f in ap.preflight()
+                    if not p.startswith("ADVISORY:")]
+        self.assertEqual([p for p in blocking if "sign in" in p], [])
+
+    def test_a_signed_in_profile_satisfies_it(self):
+        self._write("browser:\n  headless: true\n"
+                    f"  user_data_dir: {self.dir}/profile\n")
+        blocking = [p for p, _f in ap.preflight()
+                    if not p.startswith("ADVISORY:")]
+        self.assertEqual([p for p in blocking if "sign in" in p], [])
+
+    def test_not_headless_is_only_an_advisory(self):
+        # A person can log in by hand when there is a window to do it in.
+        self._write("browser:\n  headless: false\n")
+        problems = ap.preflight()
+        blocking = [p for p, _f in problems if not p.startswith("ADVISORY:")]
+        advisory = [p for p, _f in problems if p.startswith("ADVISORY:")]
+        self.assertEqual([p for p in blocking if "sign in" in p], [])
+        self.assertTrue(any("sign in" in p for p in advisory))
+
+    def test_a_missing_chrome_binary_path_blocks(self):
+        self._write(f"browser:\n  chrome_binary: {self.dir}/no/such/chrome\n"
+                    "linkedin:\n  email: a@b.com\n  password: s\n")
+        blocking = [p for p, _f in ap.preflight()
+                    if not p.startswith("ADVISORY:")]
+        self.assertTrue(any("chrome_binary" in p for p in blocking), blocking)
+
+
+class TestStopTakesTheBrowserWithIt(SandboxedAutopilot):
+    """A forced stop that leaves Chrome behind fills the machine up.
+
+    Thirteen browser processes survived one forced stop before this; on a 24/7
+    autopilot that restarts, they accumulate until memory runs out.
+    """
+
+    def test_stop_signals_the_process_group(self):
+        source = (REPO / "tools" / "autopilot.py").read_text(encoding="utf-8")
+        self.assertIn("os.killpg", source,
+                      "stop() signals only the bot, orphaning its browser")
+
+    def test_the_bot_is_spawned_as_its_own_group_leader(self):
+        # os.killpg only works because of this.
+        source = (REPO / "tools" / "autopilot.py").read_text(encoding="utf-8")
+        self.assertIn("start_new_session", source)
+
+    def test_a_child_of_the_bot_is_killed_too(self):
+        if sys.platform.startswith("win"):
+            self.skipTest("POSIX process groups")
+        # A bot that spawns a child, like Chrome.
+        (self.dir / "main.py").write_text(
+            "import subprocess, sys, time\n"
+            "subprocess.Popen([sys.executable, '-c', "
+            "'import time\\nwhile True: time.sleep(1)'])\n"
+            "while True:\n    time.sleep(1)\n", encoding="utf-8")
+        ok, msg = ap.start(skip_preflight=True)
+        self.assertTrue(ok, msg)
+        time.sleep(2)
+        pid = ap.read_lock()["pid"]
+        group = os.getpgid(pid)
+        children = [p for p in self._group_members(group) if p != pid]
+        self.assertTrue(children, "the stand-in bot spawned no child")
+
+        ap.stop(timeout=8)
+        time.sleep(1)
+        survivors = self._group_members(group)
+        self.assertEqual(survivors, [],
+                         f"{len(survivors)} process(es) survived the stop")
+
+    @staticmethod
+    def _group_members(group):
+        """Live members of a process group — zombies excluded.
+
+        os.getpgid succeeds on a process that has exited but not been reaped,
+        and a zombie holds neither memory nor a browser, so counting them would
+        report a clean shutdown as a leak.
+        """
+        out = []
+        for entry in Path("/proc").iterdir():
+            if not entry.name.isdigit():
+                continue
+            pid = int(entry.name)
+            try:
+                if os.getpgid(pid) != group:
+                    continue
+            except Exception:
+                continue
+            if not ap.process_state(pid).startswith("Z"):
+                out.append(pid)
+        return out
+
+
+class TestLoginWaitHonoursShutdown(unittest.TestCase):
+    """SIGTERM must reach the manual-login wait.
+
+    It did not, so `autopilot stop` waited out its whole grace period and then
+    SIGKILLed — which skips driver.quit() and is what orphaned the browser.
+    """
+
+    def test_the_login_wait_checks_the_shutdown_flag(self):
+        source = (REPO / "linkedin.py").read_text(encoding="utf-8")
+        start = source.index("def _wait_for_manual_login")
+        body = source[start:start + 2000]
+        self.assertIn("shutdown_requested", body,
+                      "the login wait ignores SIGTERM, forcing a SIGKILL that "
+                      "orphans the browser")
+
+
 class TestStop(SandboxedAutopilot):
     def test_stopping_when_not_running_says_so(self):
         ok, msg = ap.stop()

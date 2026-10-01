@@ -59,6 +59,24 @@ _CHROME_NIX_NAMES = ["google-chrome", "google-chrome-stable", "chromium-browser"
                      "chromium", "chrome"]
 _CHROME_MAC = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 
+# Places a browser lives that `which` will never find: containers, the
+# Playwright download cache, snap and flatpak installs. Without these,
+# undetected-chromedriver reports only "Binary Location Must be a String",
+# which says nothing about what is wrong or how to fix it.
+_CHROME_NIX_PATHS = [
+    "/usr/bin/google-chrome", "/usr/bin/google-chrome-stable",
+    "/usr/bin/chromium", "/usr/bin/chromium-browser",
+    "/opt/google/chrome/chrome", "/opt/google/chrome/google-chrome",
+    "/snap/bin/chromium", "/snap/bin/google-chrome",
+    "/var/lib/flatpak/exports/bin/com.google.Chrome",
+]
+_CHROME_GLOBS = [
+    "/opt/pw-browsers/chromium-*/chrome-linux/chrome",
+    "/opt/pw-browsers/chromium-*/chrome-linux/headless_shell",
+    "/root/.cache/ms-playwright/chromium-*/chrome-linux/chrome",
+    "/ms-playwright/chromium-*/chrome-linux/chrome",
+]
+
 _VERSION_RE = re.compile(r"(\d+)\.\d+\.\d+")
 # The exact mismatch error undetected-chromedriver/selenium raise
 MISMATCH_RE = re.compile(r"only supports Chrome version (\d+)", re.I)
@@ -139,7 +157,54 @@ def detect_chrome_version():
             v = _exe_version(name)
             if v:
                 return v
+    # Nothing on PATH: fall back to wherever the binary actually is, so the
+    # driver still gets pinned on a container or a non-standard install.
+    found = detect_chrome_binary()
+    if found:
+        return _exe_version(found)
     return None
+
+
+def detect_chrome_binary() -> str:
+    """The Chrome/Chromium executable on this machine, or '' if none is found.
+
+    `detect_chrome_version` answers "which version"; this answers "where".
+    undetected-chromedriver looks only in standard locations, and when it finds
+    nothing it fails with "Binary Location Must be a String" — an error that
+    names neither the problem nor the fix. Anyone running Chromium rather than
+    Chrome, a non-standard install, or this project's own Docker image hits it.
+    """
+    import glob
+
+    if sys.platform.startswith("win"):
+        for path in _CHROME_WIN_PATHS:
+            if os.path.exists(path):
+                return path
+        found = shutil.which("chrome.exe") or shutil.which("chrome")
+        return found or ""
+
+    if sys.platform == "darwin":
+        if os.path.exists(_CHROME_MAC):
+            return _CHROME_MAC
+        for alt in ("/Applications/Chromium.app/Contents/MacOS/Chromium",
+                    "/Applications/Google Chrome Canary.app/Contents/MacOS/"
+                    "Google Chrome Canary"):
+            if os.path.exists(alt):
+                return alt
+
+    for name in _CHROME_NIX_NAMES:
+        found = shutil.which(name)
+        if found:
+            return found
+    for path in _CHROME_NIX_PATHS:
+        if os.path.exists(path) and os.access(path, os.X_OK):
+            return path
+    for pattern in _CHROME_GLOBS:
+        # Newest first, so a cache holding several versions picks the latest.
+        for match in sorted(glob.glob(pattern), reverse=True):
+            if os.access(match, os.X_OK):
+                return match
+    return ""
 
 
 def chrome_version_from_error(error_text: str):
