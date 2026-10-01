@@ -481,6 +481,38 @@ or an unparseable evaluation is never blocked.
 
 A targeted, company-first discovery mode that complements LinkedIn/Google search. Scans a curated `companies.json` (30+ companies, extensible) via **free** ATS JSON APIs (Greenhouse, Lever, Ashby) with HTML-scraping fallback — no paid API needed. Enable with `careers_scanner.enabled: true`. Scores every role with your match scorer and surfaces the top matches.
 
+## Apply With Claude in Chrome (engine-driven)
+
+Claude in Chrome acts in your real browser with your real sessions, but it
+cannot import this project — no match scoring, no work-authorisation logic, no
+memory of how you answered a question last time, no dedup, no idea how many
+applications you have sent today. The Selenium bot has all of that and none of
+your logged-in browser. `chrome_bridge.py` is the handoff: **the agent is the
+hands, the engine stays the brain.**
+
+```bash
+lla chrome-session                   # runbook + live state, to paste into Chrome
+lla chrome-session --status          # today vs cap, open claims, next wait
+lla chrome-session --release-claims  # free jobs an abandoned session still holds
+```
+
+With `mcp_server.py` connected, the agent gets six tools and runs this loop per
+posting: `consider_job` (apply / skip / stop) → `answers_for_job` (what to type,
+and where each value came from) → fill → **you** confirm → `report_application`
+(records it, returns how long to wait). `remember_answers` stores anything you
+had to supply, so the next form fills itself.
+
+Three rules live in the engine, not in the prompt — a prompt can be forgotten,
+truncated, or summarised away mid-session:
+
+| Enforced | How |
+|---|---|
+| Daily cap | counted from `daily_stats`; `consider_job` returns `stop` at the limit |
+| One application per job | a claim held between "apply" and "reported", so the bot and the agent cannot both take a posting |
+| No invented answers | every value carries a source; anything unsourceable returns `unanswered` for you |
+
+The agent never clicks the final submit. See `tests/e2e/CLAUDE_IN_CHROME.md`.
+
 ## Run It 24/7 (autopilot)
 
 The bot's own loop is already continuous — it scans every `scan_interval_minutes`,

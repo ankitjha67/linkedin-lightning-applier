@@ -26,6 +26,37 @@ tenant where you already have an account, and the actual Submit click.
 3. Leave **auto-submit OFF** for testing.
 4. Open a job posting you'd genuinely consider, in a normal tab.
 
+## Applying end to end, with the engine driving
+
+The prompts further down are for *testing* the extension. To actually apply to
+jobs with Claude in Chrome, use the engine-driven session instead — it is the
+same browser, but the decisions come from here rather than from the agent:
+
+```bash
+lla chrome-session                 # the runbook, with your live state in it
+lla chrome-session --status        # applications today, cap, open claims
+lla chrome-session --release-claims  # free jobs an abandoned session still holds
+```
+
+Paste that runbook into Claude in Chrome with this project's MCP server
+connected (`mcp_server.py`). The agent then has six tools, and the loop is:
+`consider_job` → `answers_for_job` → fill → you confirm → `report_application`.
+
+Three things are enforced by the engine rather than by the prompt, because a
+prompt can be forgotten or summarised away halfway through a long session:
+
+- **The daily cap**, counted from `daily_stats` in SQLite. `consider_job`
+  returns `stop` once it is reached.
+- **One application per job.** A claim is held between "apply" and "reported",
+  so a browser agent and the Selenium bot running at once cannot both take the
+  same posting.
+- **No invented answers.** Every value from `answers_for_job` carries its
+  source — work_auth, remembered, config — and anything unsourceable comes back
+  as `unanswered` for you to answer. A plausible-looking wrong answer on a real
+  application is the worst outcome available.
+
+The agent still never clicks the final submit; you do.
+
 ## Humanised behaviour (paste this FIRST, before any task below)
 
 Claude for Chrome acts in your real browser, on your real account. How fast it

@@ -583,8 +583,150 @@ def tool_outcome_summary() -> str:
                 pass
 
 
+def _bridge():
+    """(cfg, state, ai) for a browser-agent session."""
+    return _load()
+
+
+def tool_chrome_session_open(search_terms: str = "") -> str:
+    """Open an agent-driven application session: the runbook plus live state."""
+    state = None
+    try:
+        cfg, state, _ai = _bridge()
+        from chrome_bridge import render_runbook, session_open
+        terms = [t.strip() for t in (search_terms or "").split(",") if t.strip()]
+        return render_runbook(session_open(state, cfg, terms or None))
+    except Exception as exc:
+        return f"Could not open a session: {exc}"
+    finally:
+        if state:
+            try:
+                state.close()
+            except Exception:
+                pass
+
+
+def tool_consider_job(url: str, title: str = "", company: str = "",
+                      description: str = "", location: str = "") -> str:
+    """Should this posting be applied to? Claims it when the answer is yes."""
+    import json
+    state = None
+    try:
+        cfg, state, ai = _bridge()
+        from chrome_bridge import consider
+        verdict = consider(state, cfg, url, title, company, description,
+                           location, ai=ai if getattr(ai, "enabled", False) else None)
+        return json.dumps(verdict, indent=2, default=str)
+    except Exception as exc:
+        return f"Could not assess that job: {exc}"
+    finally:
+        if state:
+            try:
+                state.close()
+            except Exception:
+                pass
+
+
+def tool_answers_for_job(questions_json: str, job_id: str = "",
+                         job_location: str = "") -> str:
+    """What to type in each field, with the provenance of every value."""
+    import json
+    state = None
+    try:
+        questions = json.loads(questions_json) if isinstance(questions_json, str) \
+            else questions_json
+        if isinstance(questions, dict):
+            questions = [questions]
+        if not isinstance(questions, list):
+            return ('Expected a JSON list of fields: '
+                    '[{"label": "...", "type": "...", "options": [...]}]')
+        cfg, state, _ai = _bridge()
+        from chrome_bridge import answers
+        return json.dumps(answers(state, cfg, questions, job_location, job_id),
+                          indent=2, default=str)
+    except Exception as exc:
+        return f"Could not answer those fields: {exc}"
+    finally:
+        if state:
+            try:
+                state.close()
+            except Exception:
+                pass
+
+
+def tool_report_application(job_id: str, submitted: bool, title: str = "",
+                            company: str = "", url: str = "",
+                            fields_filled: int = 0, notes: str = "",
+                            failed_reason: str = "") -> str:
+    """Record what happened to one application, and get the next step."""
+    import json
+    state = None
+    try:
+        cfg, state, _ai = _bridge()
+        from chrome_bridge import report
+        return json.dumps(
+            report(state, cfg, job_id, bool(submitted), title=title,
+                   company=company, url=url, fields_filled=int(fields_filled or 0),
+                   notes=notes, failed_reason=failed_reason),
+            indent=2, default=str)
+    except Exception as exc:
+        return f"Could not record that application: {exc}"
+    finally:
+        if state:
+            try:
+                state.close()
+            except Exception:
+                pass
+
+
+def tool_remember_answers(pairs_json: str) -> str:
+    """Store answers the user supplied, so the next form reuses them."""
+    import json
+    state = None
+    try:
+        pairs = json.loads(pairs_json) if isinstance(pairs_json, str) else pairs_json
+        if isinstance(pairs, dict):
+            pairs = [pairs]
+        cfg, state, _ai = _bridge()
+        from chrome_bridge import remember
+        saved = remember(state, cfg, pairs)
+        return f"Remembered {saved} answer(s) for next time."
+    except Exception as exc:
+        return f"Could not remember those answers: {exc}"
+    finally:
+        if state:
+            try:
+                state.close()
+            except Exception:
+                pass
+
+
+def tool_chrome_session_status() -> str:
+    """Where the session stands: applications today, cap, open claims, pacing."""
+    import json
+    state = None
+    try:
+        cfg, state, _ai = _bridge()
+        from chrome_bridge import session_status
+        return json.dumps(session_status(state, cfg), indent=2, default=str)
+    except Exception as exc:
+        return f"Could not read the session: {exc}"
+    finally:
+        if state:
+            try:
+                state.close()
+            except Exception:
+                pass
+
+
 # Registry of all tools, useful for adapters that want to enumerate them.
 ALL_TOOLS = {
+    "tool_chrome_session_open": tool_chrome_session_open,
+    "tool_consider_job": tool_consider_job,
+    "tool_answers_for_job": tool_answers_for_job,
+    "tool_report_application": tool_report_application,
+    "tool_remember_answers": tool_remember_answers,
+    "tool_chrome_session_status": tool_chrome_session_status,
     "tool_propose_outcomes_from_email": tool_propose_outcomes_from_email,
     "tool_apply_email_outcomes": tool_apply_email_outcomes,
     "tool_record_outcome": tool_record_outcome,

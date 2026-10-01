@@ -62,6 +62,7 @@ SCOPES = {
         "tables": [
             "apply_schedule", "follow_up_queue", "message_queue",
             "referral_requests", "withdrawal_queue", "job_watchlist",
+            "agent_claims",
         ],
     },
     "contacts": {

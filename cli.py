@@ -884,6 +884,62 @@ def cmd_export(args):
     print(f"  Data exported to {os.path.abspath(export_dir)}/")
 
 
+def cmd_chrome_session(args):
+    """The end-to-end runbook for a browser agent, with live state in it."""
+    import json as _json
+
+    from chrome_bridge import (
+        open_claims,
+        render_runbook,
+        session_open,
+        session_status,
+    )
+
+    cfg = _load_config(args.config)
+    state = _init_state(cfg)
+
+    if args.status:
+        _print_banner("Browser session")
+        status = session_status(state, cfg)
+        if args.json:
+            print(_json.dumps(status, indent=2, default=str))
+            return 0
+        print(f"  Today        {status['applied_today']} of {status['cap']} "
+              f"applications ({status['remaining']} left)")
+        print(f"  Active hours {'yes' if status['within_active_hours'] else 'NO — stop'}")
+        print(f"  Next         {status['next_action']}"
+              + (f" after {status['wait_seconds']}s" if status['wait_seconds'] else "")
+              + (f"  ({status['why']})" if status['why'] else ""))
+        claims = status["open_claims"]
+        if claims:
+            print(f"\n  {len(claims)} job(s) claimed but never reported back:")
+            for c in claims:
+                print(f"    {c['claimed_at']}  {(c['company'] or '?')[:24]:<24} "
+                      f"{(c['title'] or '?')[:30]}")
+            print("\n  These were started and abandoned. Report them with")
+            print("  report_application, or they expire on their own.")
+        return 0
+
+    if args.release_claims:
+        claims = open_claims(state)
+        if not claims:
+            print("  No open claims.")
+            return 0
+        from chrome_bridge import close_claim
+        for c in claims:
+            close_claim(state, c["job_id"], "abandoned", "released by hand")
+        print(f"  Released {len(claims)} claim(s).")
+        return 0
+
+    terms = [t.strip() for t in (args.terms or "").split(",") if t.strip()]
+    opened = session_open(state, cfg, terms or None)
+    if args.json:
+        print(_json.dumps(opened, indent=2, default=str))
+        return 0
+    print(render_runbook(opened))
+    return 0
+
+
 def cmd_pacing(args):
     """Print the humanised-behaviour protocol for a browser-driving agent."""
     import re as _re
@@ -1398,6 +1454,7 @@ def build_parser() -> argparse.ArgumentParser:
               lla robots https://site/jobs     What robots.txt permits (RFC 9309)
               lla autopilot status            Is the 24/7 bot up? applies today?
               lla pacing                      Humanised protocol for Claude for Chrome
+              lla chrome-session              Runbook for Claude in Chrome to apply end to end
               lla reset --what cache           Clear regenerable state (backed up)
               lla add-template mine.html      Check + install a CV template
               lla setup                        Interactive setup
@@ -1552,6 +1609,15 @@ def build_parser() -> argparse.ArgumentParser:
     # --- stats ---
     subs.add_parser("stats", help="Show application statistics")
 
+    # --- chrome-session ---
+    p = subs.add_parser("chrome-session",
+                        help="Runbook + live state for a browser agent (Claude in Chrome)")
+    p.add_argument("--terms", help="Comma-separated search terms (default: from config)")
+    p.add_argument("--status", action="store_true", help="Where the session stands")
+    p.add_argument("--release-claims", action="store_true",
+                   help="Abandon jobs claimed by a session that never reported back")
+    p.add_argument("--json", action="store_true", help="Machine-readable output")
+
     # --- pacing ---
     p = subs.add_parser("pacing", help="Humanised-behaviour protocol for Claude for Chrome")
     p.add_argument("--profile", default="normal", choices=["careful", "normal", "fast"],
@@ -1661,6 +1727,7 @@ COMMAND_MAP = {
     "stats": cmd_stats,
     "outcome": cmd_outcome,
     "sync-email": cmd_sync_email,
+    "chrome-session": cmd_chrome_session,
     "pacing": cmd_pacing,
     "autopilot": cmd_autopilot,
     "reset": cmd_reset,
