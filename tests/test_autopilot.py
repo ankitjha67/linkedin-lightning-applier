@@ -27,6 +27,23 @@ from tools import autopilot as ap  # noqa: E402
 
 REPO = Path(__file__).resolve().parent.parent
 
+# A config that passes ConfigValidator, so `start` gets past preflight. The
+# supervisor tests are about locking and liveness, not configuration.
+VALID_CONFIG = """\
+personal:
+  first_name: Ada
+  last_name: Lovelace
+  email: ada@example.com
+search:
+  search_terms: [python]
+  search_locations: [London]
+scheduling:
+  max_applies_per_day: 40
+  max_applies_per_cycle: 10
+  active_hours_start: 8
+  active_hours_end: 23
+"""
+
 
 class SandboxedAutopilot(unittest.TestCase):
     """Point the module at a throwaway project so tests never touch the repo."""
@@ -35,8 +52,7 @@ class SandboxedAutopilot(unittest.TestCase):
         self.dir = Path(tempfile.mkdtemp())
         (self.dir / "main.py").write_text(
             "import time\nwhile True:\n    time.sleep(1)\n", encoding="utf-8")
-        (self.dir / "config.yaml").write_text(
-            "scheduling:\n  max_applies_per_day: 40\n", encoding="utf-8")
+        (self.dir / "config.yaml").write_text(VALID_CONFIG, encoding="utf-8")
         self._saved = (ap.ROOT, ap.LOCK_PATH, ap.LOG_DIR)
         ap.ROOT = self.dir
         ap.LOCK_PATH = self.dir / "data" / "autopilot.lock"
@@ -173,6 +189,112 @@ class TestStartRefusesToDoubleUp(SandboxedAutopilot):
         # cron gives a process almost no environment, so .env is where the
         # API keys have to come from.
         self.assertEqual(os.environ.get("LLA_TEST_TOKEN"), "from-dotenv")
+
+
+class TestPreflight(SandboxedAutopilot):
+    """Catch what a restart cannot fix, before the first launch.
+
+    The backoff message says a restart will not fix a bad config, a missing
+    resume or a driver mismatch. Finding that out after four failed launches
+    is worse than finding it out now.
+    """
+
+    def _write(self, text):
+        (self.dir / "config.yaml").write_text(text, encoding="utf-8")
+
+    def test_a_valid_config_has_no_blocking_problems(self):
+        blocking = [p for p, _f in ap.preflight()
+                    if not p.startswith("ADVISORY:")]
+        self.assertEqual(blocking, [])
+
+    def test_a_missing_config_is_reported(self):
+        (self.dir / "config.yaml").unlink()
+        problems = ap.preflight()
+        self.assertIn("does not exist", problems[0][0])
+        self.assertIn("lla setup", problems[0][1])
+
+    def test_broken_yaml_is_reported_not_raised(self):
+        self._write("personal: [unclosed\n")
+        problems = ap.preflight()
+        self.assertIn("not valid YAML", problems[0][0])
+
+    def test_a_config_missing_required_sections_is_blocking(self):
+        self._write("scheduling:\n  max_applies_per_day: 40\n")
+        blocking = [p for p, _f in ap.preflight()
+                    if not p.startswith("ADVISORY:")]
+        self.assertTrue(blocking, "a config with no search section passed preflight")
+
+    def test_a_missing_resume_file_is_blocking(self):
+        self._write(VALID_CONFIG + "resume:\n  default_resume_path: nope/cv.pdf\n")
+        blocking = [p for p, _f in ap.preflight() if "resume" in p.lower()]
+        self.assertTrue(blocking, "a resume that does not exist passed preflight")
+
+    def test_an_existing_resume_file_passes(self):
+        (self.dir / "cv.pdf").write_bytes(b"%PDF-1.4")
+        self._write(VALID_CONFIG + "resume:\n  default_resume_path: cv.pdf\n")
+        self.assertEqual(
+            [p for p, _f in ap.preflight() if "resume" in p.lower()], [])
+
+    def test_round_the_clock_hours_are_advisory_not_blocking(self):
+        # Worth saying; not a reason to refuse to start.
+        self._write(VALID_CONFIG.replace("active_hours_start: 8", "active_hours_start: 0")
+                                .replace("active_hours_end: 23", "active_hours_end: 24"))
+        problems = ap.preflight()
+        advisories = [p for p, _f in problems if p.startswith("ADVISORY:")]
+        blocking = [p for p, _f in problems if not p.startswith("ADVISORY:")]
+        self.assertTrue(advisories, "0-24 active hours went unmentioned")
+        self.assertEqual(blocking, [])
+
+    def test_a_failure_inside_the_validator_does_not_raise(self):
+        """The except branch must survive being taken.
+
+        It called `log.debug` in a module that had no logger, so any failure
+        in validation raised NameError out of preflight — masking the real
+        problem and taking `start` down with it.
+        """
+        import validate_config
+
+        original = validate_config.ConfigValidator
+        validate_config.ConfigValidator = property()   # not callable
+        self.addCleanup(setattr, validate_config, "ConfigValidator", original)
+        problems = ap.preflight()          # must not raise
+        self.assertIsInstance(problems, list)
+
+    def test_a_failure_in_the_pacing_advisory_does_not_raise(self):
+        import human_pacing
+
+        original = human_pacing.active_hours_warning
+
+        def boom(_cfg):
+            raise RuntimeError("nope")
+        human_pacing.active_hours_warning = boom
+        self.addCleanup(setattr, human_pacing, "active_hours_warning", original)
+        self.assertIsInstance(ap.preflight(), list)
+
+    def test_start_refuses_on_a_blocking_problem(self):
+        self._write("scheduling:\n  max_applies_per_day: 40\n")
+        ok, msg = ap.start()
+        self.assertFalse(ok)
+        self.assertIn("every restart", msg)
+        self.assertFalse(ap.is_running()[0])
+
+    def test_start_proceeds_despite_an_advisory(self):
+        self._write(VALID_CONFIG.replace("active_hours_start: 8", "active_hours_start: 0")
+                                .replace("active_hours_end: 23", "active_hours_end: 24"))
+        ok, msg = ap.start()
+        self.assertTrue(ok, msg)
+
+    def test_preflight_can_be_skipped(self):
+        self._write("scheduling:\n  max_applies_per_day: 40\n")
+        ok, msg = ap.start(skip_preflight=True)
+        self.assertTrue(ok, msg)
+
+    def test_watch_reports_failure_rather_than_crash_looping(self):
+        # Better than starting a bot that dies, four times, before backing off.
+        self._write("scheduling:\n  max_applies_per_day: 40\n")
+        action, msg = ap.watch()
+        self.assertEqual(action, "failed")
+        self.assertIn("every restart", msg)
 
 
 class TestStop(SandboxedAutopilot):
@@ -363,7 +485,7 @@ class TestCronInstaller(unittest.TestCase):
         (self.dir / "tools").mkdir()
         shutil.copy(REPO / "tools" / "setup_autopilot.sh", self.dir / "tools")
         shutil.copy(REPO / "tools" / "autopilot.py", self.dir / "tools")
-        (self.dir / "config.yaml").write_text("scheduling: {}\n", encoding="utf-8")
+        (self.dir / "config.yaml").write_text(VALID_CONFIG, encoding="utf-8")
         (self.dir / "main.py").write_text(
             "import time\nwhile True:\n    time.sleep(1)\n", encoding="utf-8")
 

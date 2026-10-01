@@ -929,11 +929,37 @@ def cmd_autopilot(args):
     from tools.autopilot import format_status, start, status, stop, watch
 
     action = (args.action or "status").lower()
+
+    if action == "preflight":
+        from tools.autopilot import preflight
+        _print_banner("Autopilot preflight")
+        problems = preflight(args.config)
+        if not problems:
+            print("  Ready. Start it with:  lla autopilot start")
+            return 0
+        blocking = [(p, f) for p, f in problems if not p.startswith("ADVISORY:")]
+        advisory = [(p, f) for p, f in problems if p.startswith("ADVISORY:")]
+        for problem, fix in blocking:
+            print(f"  ✗ {problem}")
+            print(f"      fix: {fix}")
+        for problem, fix in advisory:
+            print(f"  ⚠ {problem[len('ADVISORY: '):]}")
+            print(f"      {fix}")
+        if blocking:
+            print(f"\n  {len(blocking)} problem(s) a restart would not fix.")
+            return 1
+        print("\n  Nothing blocking. Start it with:  lla autopilot start")
+        return 0
+
     if action == "status":
         _print_banner("Autopilot")
         print(format_status(status(args.config)))
         return 0
     if action == "start":
+        from tools.autopilot import preflight
+        for problem, _fix in preflight(args.config):
+            if problem.startswith("ADVISORY:"):
+                print(f"  ⚠ {problem[len('ADVISORY: '):]}")
         ok, msg = start(args.config)
         print(f"  {msg}")
         return 0 if ok else 1
@@ -1537,7 +1563,8 @@ def build_parser() -> argparse.ArgumentParser:
     # --- autopilot ---
     p = subs.add_parser("autopilot", help="Run the bot 24/7: status, start, stop, restart, watch")
     p.add_argument("action", nargs="?", default="status",
-                   choices=["status", "start", "stop", "restart", "watch"],
+                   choices=["status", "start", "stop", "restart", "watch",
+                            "preflight"],
                    help="Default: status")
 
     # --- reset ---

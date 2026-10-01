@@ -29,6 +29,7 @@ says why.
 """
 
 import json
+import logging
 import os
 import signal
 import subprocess
@@ -36,6 +37,8 @@ import sys
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
+
+log = logging.getLogger("lla.autopilot")
 
 ROOT = Path(__file__).resolve().parent.parent
 LOCK_PATH = ROOT / "data" / "autopilot.lock"
@@ -216,12 +219,84 @@ def _load_dotenv():
         pass
 
 
-def start(config: str = "config.yaml", reason: str = "manual") -> tuple:
+def preflight(config: str = "config.yaml") -> list:
+    """Reasons the bot would fail to start, as a list of (problem, fix).
+
+    The backoff message tells you a restart will not fix a bad config, a
+    missing resume or a Chrome/driver mismatch — so it is worth finding those
+    out before the first launch rather than after the fourth. Everything here
+    is cheap and offline; nothing opens a browser or touches LinkedIn.
+    """
+    problems = []
+    cfg_path = ROOT / config
+    if not cfg_path.exists():
+        return [(f"{config} does not exist",
+                 "run `lla setup` — the bot cannot log in without it")]
+
+    try:
+        import yaml
+        cfg = yaml.safe_load(cfg_path.read_text(encoding="utf-8")) or {}
+    except Exception as exc:
+        return [(f"{config} is not valid YAML ({exc})",
+                 "fix the syntax — every restart would fail the same way")]
+
+    try:
+        sys.path.insert(0, str(ROOT))
+        from validate_config import ConfigValidator
+
+        # The validator logs every finding at WARNING/ERROR as a side effect,
+        # which would print each line twice here. We render them ourselves.
+        validator_log = logging.getLogger("lla.config_validator")
+        previous = validator_log.level
+        validator_log.setLevel(logging.CRITICAL)
+        try:
+            validator = ConfigValidator(cfg)
+            valid = validator.validate()
+        finally:
+            validator_log.setLevel(previous)
+        if not valid:
+            for error in validator.errors:
+                problems.append((error, f"fix it in {config}"))
+    except Exception as exc:
+        log.debug("config validation skipped: %s", exc)
+
+    # A resume that is not there fails on the first application, not at launch,
+    # so the bot would look healthy while applying without one.
+    resume = ((cfg.get("resume", {}) or {}).get("default_resume_path") or "").strip()
+    if resume and not (ROOT / resume).exists() and not Path(resume).exists():
+        problems.append((f"the configured resume is missing: {resume}",
+                         "point resume.default_resume_path at a file that exists"))
+
+    # Applying round the clock is a louder signal than anything per-click
+    # pacing can cover, and autopilot is what makes it possible.
+    try:
+        from human_pacing import active_hours_warning
+        warning = active_hours_warning(cfg)
+        if warning:
+            problems.append(("ADVISORY: " + warning,
+                             "set active_hours to the hours you are awake; "
+                             "autopilot keeps the process alive and idles overnight"))
+    except Exception as exc:
+        log.debug("pacing advisory skipped: %s", exc)
+
+    return problems
+
+
+def start(config: str = "config.yaml", reason: str = "manual",
+          skip_preflight: bool = False) -> tuple:
     """Launch the bot detached. (ok, message)."""
     running, lock = is_running()
     if running:
         return False, (f"already running (pid {lock.get('pid')}, started "
                        f"{lock.get('started_at', '?')}) — not starting a second copy")
+
+    if not skip_preflight:
+        blocking = [(p, f) for p, f in preflight(config)
+                    if not p.startswith("ADVISORY:")]
+        if blocking:
+            lines = [f"  · {p}\n      fix: {f}" for p, f in blocking]
+            return False, ("not starting — the bot would fail the same way on "
+                           "every restart:\n" + "\n".join(lines))
 
     cfg_path = ROOT / config
     if not cfg_path.exists():
