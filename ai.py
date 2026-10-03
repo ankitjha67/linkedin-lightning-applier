@@ -38,6 +38,15 @@ PROVIDER_URLS = {
     "xai":        "https://api.x.ai/v1",             # Grok
     "mistral":    "https://api.mistral.ai/v1",
     "nvidia":     "https://integrate.api.nvidia.com/v1",  # NVIDIA NIM (build.nvidia.com)
+    "cerebras":   "https://api.cerebras.ai/v1",           # ultra-fast inference
+    "fireworks":  "https://api.fireworks.ai/inference/v1",
+    "perplexity": "https://api.perplexity.ai",            # Sonar models
+    "sambanova":  "https://api.sambanova.ai/v1",          # fast inference
+    "deepinfra":  "https://api.deepinfra.com/v1/openai",
+    "hyperbolic": "https://api.hyperbolic.xyz/v1",
+    "moonshot":   "https://api.moonshot.ai/v1",           # Kimi
+    "qwen":       "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",  # Alibaba DashScope
+    "cohere":     "https://api.cohere.ai/compatibility/v1",
     "ollama":     "http://localhost:11434/v1",
     "lmstudio":   "http://localhost:1234/v1",
     "custom":     "",  # any OpenAI-compatible server (vLLM, llama.cpp, LocalAI…) — set ai.base_url
@@ -56,6 +65,15 @@ DEFAULT_MODELS = {
     "xai":        "grok-4",
     "mistral":    "mistral-large-latest",
     "nvidia":     "nvidia/llama-3.3-nemotron-super-49b-v1.5",
+    "cerebras":   "llama-3.3-70b",
+    "fireworks":  "accounts/fireworks/models/llama-v3p3-70b-instruct",
+    "perplexity": "sonar",
+    "sambanova":  "Meta-Llama-3.3-70B-Instruct",
+    "deepinfra":  "meta-llama/Llama-3.3-70B-Instruct",
+    "hyperbolic": "meta-llama/Llama-3.3-70B-Instruct",
+    "moonshot":   "moonshot-v1-8k",
+    "qwen":       "qwen-plus",
+    "cohere":     "command-r-plus",
     "ollama":     "llama3.1",
     "lmstudio":   "local-model",
     "custom":     "local-model",
@@ -329,6 +347,15 @@ class AIAnswerer:
             "xai":        ["XAI_API_KEY", "GROK_API_KEY"],
             "mistral":    ["MISTRAL_API_KEY"],
             "nvidia":     ["NVIDIA_API_KEY", "NVIDIA_NIM_API_KEY"],
+            "cerebras":   ["CEREBRAS_API_KEY"],
+            "fireworks":  ["FIREWORKS_API_KEY"],
+            "perplexity": ["PERPLEXITY_API_KEY", "PPLX_API_KEY"],
+            "sambanova":  ["SAMBANOVA_API_KEY"],
+            "deepinfra":  ["DEEPINFRA_API_KEY", "DEEPINFRA_TOKEN"],
+            "hyperbolic": ["HYPERBOLIC_API_KEY"],
+            "moonshot":   ["MOONSHOT_API_KEY"],
+            "qwen":       ["DASHSCOPE_API_KEY", "QWEN_API_KEY"],
+            "cohere":     ["COHERE_API_KEY"],
             "custom":     ["CUSTOM_API_KEY", "LLM_API_KEY"],
         }.get(provider, [f"{provider.upper()}_API_KEY"])
         for name in candidates:
