@@ -24,6 +24,14 @@ import os
 from datetime import datetime
 from pathlib import Path
 
+# Force UTF-8 console output so Unicode (✓, —, …) never crashes on Windows,
+# whose default cp1252 codec raises UnicodeEncodeError on those characters.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, ValueError):
+        pass  # non-reconfigurable stream (e.g. already wrapped/redirected)
+
 try:
     import yaml
     from selenium.webdriver.common.by import By
