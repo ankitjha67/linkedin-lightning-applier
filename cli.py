@@ -471,6 +471,116 @@ def cmd_test_llm(args):
         sys.exit(1)
 
 
+def _apply_ai_models_to_config(path, provider, best, chain):
+    """Write provider/model + <provider>_fallback_models into the ai: block only.
+
+    Line-scoped to the `ai:` section (between `^ai:` and the next top-level key)
+    so the config's comments elsewhere are untouched. Returns True on success.
+    """
+    import re
+    text = Path(path).read_text(encoding="utf-8")
+    lines = text.splitlines(keepends=True)
+    start = next((i for i, l in enumerate(lines) if re.match(r"^ai:\s*$", l)), None)
+    if start is None:
+        return False
+    end = next((i for i in range(start + 1, len(lines))
+                if lines[i].strip() and not lines[i].startswith((" ", "\t"))), len(lines))
+
+    def set_key(key, value):
+        pat = re.compile(rf"^(\s{{2}}{key}:\s*).*$")
+        for i in range(start + 1, end):
+            if pat.match(lines[i]):
+                lines[i] = f"  {key}: {value}\n"
+                return True
+        return False
+
+    set_key("provider", f'"{provider}"')
+    set_key("model", f'"{best}"')
+    set_key("base_url", '""')
+
+    chain_block = [f"  {provider}_fallback_models:\n"] + [f'    - "{m}"\n' for m in chain]
+    key = f"{provider}_fallback_models"
+    kpat = re.compile(rf"^\s{{2}}{re.escape(key)}:\s*$")
+    kidx = next((i for i in range(start + 1, end) if kpat.match(lines[i])), None)
+    if kidx is not None:
+        j = kidx + 1
+        while j < end and lines[j].startswith("    -"):
+            j += 1
+        lines[kidx:j] = chain_block
+    else:
+        midx = next((i for i in range(start + 1, end)
+                     if re.match(r"^\s{2}model:\s*", lines[i])), start + 1)
+        lines[midx + 1:midx + 1] = chain_block
+
+    Path(path).write_text("".join(lines), encoding="utf-8")
+    return True
+
+
+def cmd_discover_models(args):
+    """Ping the provider's /v1/models, rank for this bot's use case, probe, chain.
+
+    Finds the best/latest/fastest chat model for relevance scoring + short form
+    answers, probes candidates live (dropping ones whose token limits/access
+    don't fit), and prints a ranked fallback chain. `--apply` writes the pick and
+    chain into config.yaml (ai: block only). Defaults to the NVIDIA NIM endpoint.
+    """
+    from ai import discover_models, PROVIDER_URLS
+    import os
+    _print_banner("Model Discovery")
+    cfg = _load_config(args.config)
+    ai_cfg = cfg.get("ai", {})
+    provider = (args.provider or "nvidia").lower()
+    base_url = args.base_url or ai_cfg.get("base_url", "") or PROVIDER_URLS.get(provider, "")
+    api_key = (args.api_key or ai_cfg.get("api_key", "")
+               or os.environ.get("NVIDIA_API_KEY", "")
+               or os.environ.get(f"{provider.upper()}_API_KEY", ""))
+    if not base_url:
+        print(f"  {_color('No base_url for provider ' + provider, 'red')}"); sys.exit(1)
+    if not api_key:
+        print(f"  {_color('No API key found.', 'red')} Set it in .env "
+              f"({provider.upper()}_API_KEY) or pass --api-key."); sys.exit(1)
+
+    print(f"  Provider : {provider}\n  Endpoint : {base_url}/models\n")
+    try:
+        res = discover_models(base_url, api_key, probe=not args.no_probe,
+                              max_probe=args.max_probe)
+    except Exception as exc:  # noqa: BLE001
+        print(f"  {_color('Discovery failed', 'red')}: {exc}"); sys.exit(1)
+
+    print(f"  Ranked chat models (best→worst for scoring): {len(res['ranked'])} found")
+    if res["details"]:
+        print("\n  Probe results:")
+        for mid, ok, note in res["details"]:
+            mark = _color("OK ", "green") if ok else _color("skip", "yellow")
+            print(f"    [{mark}] {mid:52} {note}")
+    elif res["ranked"]:
+        print("\n  Top candidates:")
+        for mid in res["ranked"][:args.max_probe]:
+            print(f"    - {mid}")
+
+    best = res["best"]
+    chain = res["chain"] or res["ranked"][:args.max_probe]
+    if not best:
+        print(f"\n  {_color('No usable chat model found.', 'red')}"); sys.exit(1)
+    print(f"\n  {_color('Recommended primary', 'green')}: {best}")
+    print(f"  Fallback chain      : {', '.join(chain) or '(none)'}")
+
+    if args.apply:
+        ok = _apply_ai_models_to_config(args.config, provider, best, chain)
+        if ok:
+            print(f"\n  {_color('Applied to ' + args.config, 'green')} "
+                  f"(ai.provider={provider}, ai.model={best}, ai.{provider}_fallback_models set).")
+            print("  Run:  python cli.py test-llm   to confirm.")
+        else:
+            print(f"\n  {_color('Could not locate the ai: block to edit — paste manually:', 'yellow')}")
+            print(f"  ai:\n    provider: \"{provider}\"\n    model: \"{best}\"")
+            print(f"    {provider}_fallback_models:")
+            for m in chain:
+                print(f'      - "{m}"')
+    else:
+        print(f"\n  (re-run with --apply to write this into {args.config})")
+
+
 def cmd_apply(args):
     """Submit applications to external ATS forms from a list of apply URLs.
 
@@ -1583,6 +1693,19 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--api-key", dest="api_key", help="Override API key (else config / env var)")
     p.add_argument("--prompt", help="Custom test prompt")
 
+    # --- discover-models ---
+    p = subs.add_parser("discover-models",
+                        help="Ping provider /v1/models, rank/probe, pick best + fallback chain (NVIDIA by default)")
+    p.add_argument("--provider", help="Provider to query (default: nvidia)")
+    p.add_argument("--base-url", dest="base_url", help="Override base URL")
+    p.add_argument("--api-key", dest="api_key", help="Override API key (else config / NVIDIA_API_KEY env)")
+    p.add_argument("--max-probe", dest="max_probe", type=int, default=8,
+                   help="How many top-ranked models to probe (default 8)")
+    p.add_argument("--no-probe", dest="no_probe", action="store_true",
+                   help="Rank only; skip live probing")
+    p.add_argument("--apply", action="store_true",
+                   help="Write the chosen model + fallback chain into config.yaml")
+
     # --- apply ---
     p = subs.add_parser("apply", help="Submit external ATS applications from apply URLs")
     p.add_argument("urls", nargs="*", help="Apply URL(s) to submit")
@@ -1796,6 +1919,7 @@ COMMAND_MAP = {
     "screen": cmd_screen,
     "doctor": cmd_doctor,
     "test-llm": cmd_test_llm,
+    "discover-models": cmd_discover_models,
     "evaluate": cmd_evaluate,
     "score": cmd_score,
     "compare-offers": cmd_compare_offers,

@@ -37,6 +37,7 @@ PROVIDER_URLS = {
     "openrouter": "https://openrouter.ai/api/v1",    # Free model fallback chain
     "xai":        "https://api.x.ai/v1",             # Grok
     "mistral":    "https://api.mistral.ai/v1",
+    "nvidia":     "https://integrate.api.nvidia.com/v1",  # NVIDIA NIM (build.nvidia.com)
     "ollama":     "http://localhost:11434/v1",
     "lmstudio":   "http://localhost:1234/v1",
     "custom":     "",  # any OpenAI-compatible server (vLLM, llama.cpp, LocalAI…) — set ai.base_url
@@ -54,6 +55,7 @@ DEFAULT_MODELS = {
     "openrouter": "meta-llama/llama-3.3-70b-instruct:free",
     "xai":        "grok-4",
     "mistral":    "mistral-large-latest",
+    "nvidia":     "nvidia/llama-3.3-nemotron-super-49b-v1.5",
     "ollama":     "llama3.1",
     "lmstudio":   "local-model",
     "custom":     "local-model",
@@ -67,6 +69,151 @@ OPENROUTER_FREE_CHAIN = [
     "nvidia/nemotron-3-super-120b-a12b:free",
     "nvidia/nemotron-nano-9b-v2:free",
 ]
+
+# NVIDIA NIM (integrate.api.nvidia.com) — ranked default fallback chain for this
+# bot's use case (relevance scoring 0-100 + short form answers): fast, capable
+# instruct models first. `discover_models()` refreshes this live from the account's
+# own /v1/models when an NVIDIA_API_KEY is set, so this is only the offline default.
+NVIDIA_PREFERRED_CHAIN = [
+    "nvidia/llama-3.3-nemotron-super-49b-v1.5",   # best speed/quality balance
+    "nvidia/llama-3.1-nemotron-nano-8b-v1",        # fastest
+    "meta/llama-3.3-70b-instruct",                 # strong general fallback
+    "nvidia/llama-3.1-nemotron-70b-instruct",
+    "meta/llama-3.1-8b-instruct",
+]
+
+# Substrings that mark a model as NOT a general text-chat model (unusable for
+# scoring / short answers): embeddings, rerankers, vision/audio, safety/reward, etc.
+_NVIDIA_NONCHAT_MARKERS = (
+    "embed", "embedding", "rerank", "retrieval", "reward", "guard", "safety",
+    "vision", "vila", "nvclip", "clip", "ocr", "parse", "parakeet", "canary",
+    "riva", "tts", "asr", "stt", "audio", "image", "diffusion", "sana",
+    "consistory", "genmo", "fourcastnet", "molmim", "dragon", "nemoretriever",
+    "paddleocr",
+)
+
+
+def rank_models_for_scoring(model_ids):
+    """Order model IDs best→worst for THIS bot's use case.
+
+    Use case = tiny prompts, a 0-100 integer score or a one-line form answer.
+    So we want fast, current, instruct-tuned text models — not the largest.
+    Non-chat models (embeddings, vision, rerankers…) are dropped entirely.
+    """
+    def version_num(mid: str) -> float:
+        import re as _re
+        m = _re.findall(r"v(\d+(?:\.\d+)?)", mid.lower())
+        return max((float(x) for x in m), default=0.0)
+
+    def size_b(mid: str) -> float:
+        import re as _re
+        m = _re.findall(r"(\d+(?:\.\d+)?)\s*b\b", mid.lower())
+        return max((float(x) for x in m), default=0.0)
+
+    def is_chat(mid: str) -> bool:
+        low = mid.lower()
+        return not any(marker in low for marker in _NVIDIA_NONCHAT_MARKERS)
+
+    def key(mid: str):
+        low = mid.lower()
+        # Tier: nemotron instruct families first, then llama instruct, then rest.
+        if "nemotron" in low:
+            tier = 3
+        elif "instruct" in low or "llama" in low or "qwen" in low or "mistral" in low:
+            tier = 2
+        else:
+            tier = 1
+        # Speed sweet spot: reward small/mid (nano/8b/9b/49b), penalise the giants.
+        sz = size_b(low)
+        if sz == 0:
+            speed = 1
+        elif sz <= 12:
+            speed = 3          # nano / 8-9B — fastest
+        elif sz <= 70:
+            speed = 2          # 49-70B — balanced
+        else:
+            speed = 0          # 120B+ — slow, keep only as deep fallback
+        # This use case (0-100 score / one-line answer) wants speed, not chain-of-
+        # thought: reward fast/instruct variants, penalise reasoning/omni/thinking.
+        fast_bonus = 1 if any(w in low for w in ("lightning", "fast", "flash", "instruct")) else 0
+        slow_penalty = 1 if any(w in low for w in ("reasoning", "thinking", "omni", "-r1", "think")) else 0
+        return (tier, speed + fast_bonus - slow_penalty, version_num(low), -sz)
+
+    chat = [m for m in model_ids if is_chat(m)]
+    return sorted(chat, key=key, reverse=True)
+
+
+def list_models(base_url: str, api_key: str, timeout: int = 20):
+    """GET {base_url}/models (OpenAI-compatible). Returns a list of model-id strings."""
+    import requests
+    url = base_url.rstrip("/") + "/models"
+    headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
+    r = requests.get(url, headers=headers, timeout=timeout)
+    r.raise_for_status()
+    data = r.json().get("data", r.json() if isinstance(r.json(), list) else [])
+    ids = []
+    for item in data:
+        mid = item.get("id") if isinstance(item, dict) else str(item)
+        if mid:
+            ids.append(mid)
+    return ids
+
+
+def probe_model(base_url: str, api_key: str, model: str, max_tokens: int = 16,
+                timeout: int = 30):
+    """Send a minimal chat request to confirm a model is usable for scoring.
+
+    Returns (ok: bool, note: str). `note` carries a short diagnostic — e.g. a
+    token-limit or access error — so callers can see WHY a model was dropped and
+    route around models whose input/output limits don't fit.
+    """
+    import requests
+    url = base_url.rstrip("/") + "/chat/completions"
+    headers = {"Content-Type": "application/json"}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+    body = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": "You score 0-100. Reply with one integer only."},
+            {"role": "user", "content": "Score the fit: candidate is a credit risk manager; job is credit risk manager."},
+        ],
+        "temperature": 0,
+        "max_tokens": max_tokens,
+    }
+    try:
+        r = requests.post(url, headers=headers, json=body, timeout=timeout)
+        if r.status_code == 200:
+            txt = (r.json()["choices"][0]["message"]["content"] or "").strip()
+            return (bool(txt), txt[:40] or "empty reply")
+        return (False, f"HTTP {r.status_code}: {r.text[:120]}")
+    except Exception as e:  # noqa: BLE001
+        return (False, str(e)[:120])
+
+
+def discover_models(base_url: str, api_key: str, probe: bool = True,
+                    max_probe: int = 8, max_tokens: int = 16):
+    """List → rank → (optionally) probe the provider's models for scoring use.
+
+    Returns {"best": str|None, "chain": [str...], "ranked": [str...],
+             "details": [(model, ok, note)...]}. `chain` = probed-working models
+     in ranked order (best first), ready to drop into ai.*_fallback_models.
+    """
+    ranked = rank_models_for_scoring(list_models(base_url, api_key))
+    result = {"best": None, "chain": [], "ranked": ranked, "details": []}
+    if not probe:
+        result["best"] = ranked[0] if ranked else None
+        result["chain"] = ranked[:max_probe]
+        return result
+    working = []
+    for mid in ranked[:max_probe]:
+        ok, note = probe_model(base_url, api_key, mid, max_tokens=max_tokens)
+        result["details"].append((mid, ok, note))
+        if ok:
+            working.append(mid)
+    result["chain"] = working
+    result["best"] = working[0] if working else (ranked[0] if ranked else None)
+    return result
 
 
 class AIAnswerer:
@@ -100,6 +247,10 @@ class AIAnswerer:
 
         # OpenRouter free-model fallback chain (zero cost) — tried in order on rate limit
         self.openrouter_chain = ai_cfg.get("openrouter_fallback_models", OPENROUTER_FREE_CHAIN)
+
+        # NVIDIA NIM fallback chain — tried in order on ANY error (token limits,
+        # access, rate limits). Refresh it live with `lla discover-models`.
+        self.nvidia_chain = ai_cfg.get("nvidia_fallback_models", NVIDIA_PREFERRED_CHAIN)
 
         # Claude CLI options (uses the `claude` binary — no API key)
         self.claude_cli_model = ai_cfg.get("claude_cli_model", "")
@@ -177,6 +328,7 @@ class AIAnswerer:
             "openrouter": ["OPENROUTER_API_KEY"],
             "xai":        ["XAI_API_KEY", "GROK_API_KEY"],
             "mistral":    ["MISTRAL_API_KEY"],
+            "nvidia":     ["NVIDIA_API_KEY", "NVIDIA_NIM_API_KEY"],
             "custom":     ["CUSTOM_API_KEY", "LLM_API_KEY"],
         }.get(provider, [f"{provider.upper()}_API_KEY"])
         for name in candidates:
@@ -457,6 +609,11 @@ RULES:
         if provider == "openrouter":
             return self._call_openrouter(client, model, system, user)
 
+        # NVIDIA NIM — ranked model fallback chain (falls through on any error,
+        # including token-limit/access errors, to the next available model)
+        if provider == "nvidia":
+            return self._call_nvidia(client, model, system, user)
+
         if not client:
             return ""
 
@@ -548,6 +705,47 @@ RULES:
                 log.warning(f"  openrouter/{m} failed: {e}")
                 continue
         log.warning("  All OpenRouter free models exhausted/failed")
+        return ""
+
+    def _call_nvidia(self, client, model: str, system: str, user: str) -> str:
+        """Call NVIDIA NIM, trying the primary model then the ranked chain.
+
+        Unlike OpenRouter (which only advances on rate limits), this advances on
+        ANY failure — a model that rejects the request for token-limit or access
+        reasons is skipped so the next available model answers.
+        """
+        if not client:
+            return ""
+        models = [model] + [m for m in self.nvidia_chain if m != model]
+        for idx, m in enumerate(models):
+            try:
+                response = client.chat.completions.create(
+                    model=m,
+                    messages=[
+                        {"role": "system", "content": system},
+                        {"role": "user", "content": user},
+                    ],
+                    temperature=self.temperature,
+                    max_tokens=self.max_tokens,
+                )
+                raw = response.choices[0].message.content
+                if raw is None:
+                    continue
+                answer = raw.strip()
+                if "<think>" in answer:
+                    import re as _re
+                    answer = _re.sub(r'<think>.*?</think>', '', answer, flags=_re.DOTALL).strip()
+                if answer:
+                    log.debug(f"  [nvidia/{m}] (model {idx+1}/{len(models)}) → {answer[:80]}")
+                    return answer
+            except Exception as e:  # noqa: BLE001
+                msg = str(e).lower()
+                if any(x in msg for x in ("token", "context", "length", "max")):
+                    log.info(f"  NVIDIA {m} token/context limit — trying next model...")
+                else:
+                    log.warning(f"  nvidia/{m} failed: {e}")
+                continue
+        log.warning("  All NVIDIA models exhausted/failed")
         return ""
 
     def _call_claude_cli(self, system: str, user: str) -> str:
